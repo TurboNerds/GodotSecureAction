@@ -11,10 +11,11 @@ on:
 # secret named GODOT_ENCRYPTION_KEY.
 
 env:
-  GODOT_VERSION:        '4.6-stable'
-  GODOT_REPO:           'godotengine/godot'
-  GODOT_SECURE_REPO:    'emabrey/Godot-Secure'
-  GODOT_SECURE_TAG:     'v1.0.2-alpha'
+  GODOT_VERSION:                    '4.6-stable'
+  GODOT_REPO:                       'godotengine/godot'
+  GODOT_SECURE_REPO:                'emabrey/Godot-Secure'
+  GODOT_SECURE_TAG:                 'v1.0.2-alpha'
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
 
@@ -38,7 +39,7 @@ jobs:
       # ── Python + SCons ───────────────────────────────────────────────────────
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.x'
 
@@ -57,7 +58,7 @@ jobs:
 
       - name: Restore Godot source cache
         id: cache-source
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: godot-source
           key: godot-source-${{ env.GODOT_REPO }}-${{ env.GODOT_VERSION }}-${{ runner.os }}
@@ -74,7 +75,7 @@ jobs:
 
       - name: Save Godot source cache
         if: steps.cache-source.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: godot-source
           key: godot-source-${{ env.GODOT_REPO }}-${{ env.GODOT_VERSION }}-${{ runner.os }}
@@ -83,7 +84,7 @@ jobs:
       # Keyed per cipher + OS so caches from different combinations never mix.
 
       - name: Restore SCons cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .scons-cache
           key: >-
@@ -118,7 +119,7 @@ jobs:
 
       - name: Upload Godot Secure log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: godot-secure-log-${{ matrix.cipher }}-${{ runner.os }}
           path: godot_secure_*.log
@@ -231,7 +232,7 @@ jobs:
       # ── Upload artifacts ─────────────────────────────────────────────────────
 
       - name: Upload binaries
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: godot-${{ matrix.cipher }}-${{ runner.os }}
           path: godot-source/bin/

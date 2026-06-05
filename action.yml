@@ -139,7 +139,7 @@ runs:
     # ── Python + SCons ─────────────────────────────────────────────────────────
 
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: ${{ inputs.python-version }}
 
@@ -152,7 +152,7 @@ runs:
     - name: Cache Godot source
       if: inputs.godot-version != '' && inputs.cache-godot-source == 'true'
       id: cache-godot-source
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ${{ inputs.godot-source }}
         key: godot-source-${{ inputs.godot-repo }}-${{ inputs.godot-version }}
@@ -264,7 +264,7 @@ runs:
 
     - name: Restore SCons cache
       if: inputs.scons-cache == 'true'
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ${{ inputs.scons-cache-path }}
         key: >-
