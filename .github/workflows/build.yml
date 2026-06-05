@@ -42,10 +42,15 @@ jobs:
             echo "Using encryption key from GODOT_ENCRYPTION_KEY secret."
           else
             KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
-            echo "No secret found — generated a new 256-bit encryption key."
+            echo "No secret configured — generated a new 256-bit encryption key for this run."
           fi
-          echo "::add-mask::$KEY"
+
+          # Write to GITHUB_OUTPUT before masking. ::add-mask:: redacts the
+          # value from all subsequent log lines but also from anything already
+          # in the output buffer, which would make the job output arrive empty
+          # in downstream jobs. Writing first preserves the actual value.
           echo "encryption-key=$KEY" >> "$GITHUB_OUTPUT"
+          echo "::add-mask::$KEY"
 
       - name: Cache Godot source
         id: cache-source
@@ -128,12 +133,11 @@ jobs:
       - name: Apply Godot Secure (${{ matrix.cipher }})
         shell: bash
         env:
-          GODOT_ENCRYPTION_KEY: ${{ needs.prepare.outputs.encryption-key }}
+          SCRIPT_AES256_ENCRYPTION_KEY: ${{ needs.prepare.outputs.encryption-key }}
         run: |
           python godot_secure.py godot-source \
             --mode apply \
             --algorithm ${{ matrix.cipher }} \
-            --key "$GODOT_ENCRYPTION_KEY" \
             --advanced-kdf \
             --non-interactive
 
