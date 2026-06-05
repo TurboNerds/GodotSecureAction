@@ -1,0 +1,208 @@
+name: Build Godot Secure
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+# One encryption key is shared across all cipher/OS combinations so that a
+# single exported project works with every platform binary.
+# Store it as an encrypted Actions secret named GODOT_ENCRYPTION_KEY.
+
+env:
+  GODOT_VERSION:        '4.6-stable'
+  GODOT_REPO:           'godotengine/godot'
+  GODOT_SECURE_REPO:    'emabrey/Godot-Secure'
+  GODOT_SECURE_TAG:     'v1.0.0-alpha'
+
+jobs:
+
+  # ── Prepare: download and cache the clean Godot source once ─────────────────
+  # Each build job restores from this cache read-only so that no patched state
+  # is ever written back. The prepare job runs on Linux to maximise cache
+  # compatibility; the tarball contents are platform-independent C++ source.
+
+  prepare:
+    name: Cache Godot source
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Cache Godot source
+        id: cache-source
+        uses: actions/cache@v4
+        with:
+          path: godot-source
+          key: godot-source-${{ env.GODOT_REPO }}-${{ env.GODOT_VERSION }}
+
+      - name: Download Godot source
+        if: steps.cache-source.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p godot-source
+          curl -fL \
+            "https://github.com/${{ env.GODOT_REPO }}/archive/refs/tags/${{ env.GODOT_VERSION }}.tar.gz" \
+            | tar -xz --strip-components=1 -C godot-source
+          echo "Downloaded Godot ${{ env.GODOT_VERSION }} source."
+
+  # ── Build matrix: 3 ciphers × 3 OSes = 9 parallel jobs ─────────────────────
+
+  build:
+    name: ${{ matrix.cipher }} / ${{ matrix.os }}
+    needs: prepare
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os:     [ubuntu-latest, macos-latest, windows-latest]
+        cipher: [aes, camellia, aria]
+
+    steps:
+
+      # ── Python + SCons ───────────────────────────────────────────────────────
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install SCons
+        run: pip install scons
+
+      # ── Restore clean Godot source (read-only) ───────────────────────────────
+      # actions/cache/restore does not save at job end, so each job starts with
+      # the unmodified source regardless of what other jobs have patched.
+
+      - name: Restore Godot source
+        uses: actions/cache/restore@v4
+        with:
+          path: godot-source
+          key: godot-source-${{ env.GODOT_REPO }}-${{ env.GODOT_VERSION }}
+          fail-on-cache-miss: true
+
+      # ── SCons build cache ────────────────────────────────────────────────────
+      # Keyed per cipher + OS so caches from different combinations never mix.
+
+      - name: Restore SCons cache
+        uses: actions/cache@v4
+        with:
+          path: .scons-cache
+          key: >-
+            scons-${{ matrix.cipher }}-${{ runner.os }}-${{ env.GODOT_VERSION }}-${{
+            hashFiles('godot-source/version.py') }}
+          restore-keys: |
+            scons-${{ matrix.cipher }}-${{ runner.os }}-${{ env.GODOT_VERSION }}-
+            scons-${{ matrix.cipher }}-${{ runner.os }}-
+
+      # ── Download godot_secure.py ─────────────────────────────────────────────
+
+      - name: Download godot_secure.py
+        shell: bash
+        run: |
+          curl -fL \
+            "https://github.com/${{ env.GODOT_SECURE_REPO }}/releases/download/${{ env.GODOT_SECURE_TAG }}/godot_secure.py" \
+            -o godot_secure.py
+          echo "Downloaded godot_secure.py from ${{ env.GODOT_SECURE_REPO }}@${{ env.GODOT_SECURE_TAG }}."
+
+      # ── Apply Godot Secure patch ─────────────────────────────────────────────
+
+      - name: Apply Godot Secure (${{ matrix.cipher }})
+        shell: bash
+        env:
+          SCRIPT_AES256_ENCRYPTION_KEY: ${{ secrets.GODOT_ENCRYPTION_KEY }}
+        run: |
+          python godot_secure.py godot-source \
+            --mode apply \
+            --algorithm ${{ matrix.cipher }} \
+            --generate-key \
+            --advanced-kdf \
+            --non-interactive
+
+      - name: Upload Godot Secure log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: godot-secure-log-${{ matrix.cipher }}-${{ runner.os }}
+          path: godot_secure_*.log
+          if-no-files-found: warn
+
+      # ── System dependencies ──────────────────────────────────────────────────
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            build-essential \
+            libx11-dev \
+            libxcursor-dev \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxi-dev \
+            libxext-dev \
+            libxrender-dev \
+            libgl1-mesa-dev \
+            libasound2-dev \
+            libpulse-dev \
+            libudev-dev \
+            libdbus-1-dev \
+            libfreetype-dev \
+            pkg-config \
+            yasm
+
+      - name: Install macOS build dependencies
+        if: runner.os == 'macOS'
+        run: brew install yasm || true
+
+      # ── Detect SCons platform ────────────────────────────────────────────────
+
+      - name: Detect SCons platform
+        id: platform
+        shell: bash
+        run: |
+          case "${{ runner.os }}" in
+            Linux)   echo "value=linuxbsd" >> "$GITHUB_OUTPUT" ;;
+            macOS)   echo "value=macos"    >> "$GITHUB_OUTPUT" ;;
+            Windows) echo "value=windows"  >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      # ── Build ────────────────────────────────────────────────────────────────
+
+      - name: Build editor
+        shell: bash
+        working-directory: godot-source
+        run: |
+          scons \
+            platform=${{ steps.platform.outputs.value }} \
+            target=editor \
+            cache_path=../.scons-cache \
+            -j$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 4)
+
+      - name: Build export template (debug)
+        shell: bash
+        working-directory: godot-source
+        run: |
+          scons \
+            platform=${{ steps.platform.outputs.value }} \
+            target=template_debug \
+            cache_path=../.scons-cache \
+            -j$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 4)
+
+      - name: Build export template (release)
+        shell: bash
+        working-directory: godot-source
+        run: |
+          scons \
+            platform=${{ steps.platform.outputs.value }} \
+            target=template_release \
+            lto=thin \
+            cache_path=../.scons-cache \
+            -j$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 4)
+
+      # ── Upload artifacts ─────────────────────────────────────────────────────
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: godot-${{ matrix.cipher }}-${{ runner.os }}
+          path: godot-source/bin/
+          if-no-files-found: error
