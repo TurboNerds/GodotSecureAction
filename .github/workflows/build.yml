@@ -144,6 +144,16 @@ jobs:
         run: |
           brew install molten-vk yasm
 
+      # ── Windows: install D3D12 SDK dependencies ──────────────────────────────
+      # Godot ships a helper script that downloads the D3D12 Agility SDK, DXC
+      # shader compiler, and PIX runtime via NuGet. It must run before SCons.
+
+      - name: Install D3D12 SDK (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        working-directory: godot-source
+        run: python misc/scripts/install_d3d12_sdk_windows.py
+
       # ── Detect platform and resolve platform-specific SCons args ─────────────
 
       - name: Detect platform
