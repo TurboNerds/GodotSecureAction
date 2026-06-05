@@ -46,9 +46,10 @@ jobs:
       - name: Install SCons
         run: pip install scons
 
-      # ── Godot source (per-OS cache, clean only) ──────────────────────────────
-      # Cache key includes runner.os so Linux, macOS, and Windows never share
-      # an incompatible cache entry.
+      # ── Godot source cache (clean only) ──────────────────────────────────────
+      # Cache key is version-only — the source tarball is identical across all
+      # operating systems. GitHub Actions handles OS-scoping transparently, so
+      # there is no need to embed runner.os in the key.
       #
       # actions/cache/restore is used instead of actions/cache so the cache is
       # never saved at job end. Each job patches the source tree with a
@@ -61,7 +62,7 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: godot-source
-          key: godot-source-${{ env.GODOT_REPO }}-${{ env.GODOT_VERSION }}-${{ runner.os }}
+          key: godot-source-${{ env.GODOT_REPO }}-${{ env.GODOT_VERSION }}
 
       - name: Download Godot source
         if: steps.cache-source.outputs.cache-hit != 'true'
@@ -78,7 +79,7 @@ jobs:
         uses: actions/cache/save@v5
         with:
           path: godot-source
-          key: godot-source-${{ env.GODOT_REPO }}-${{ env.GODOT_VERSION }}-${{ runner.os }}
+          key: godot-source-${{ env.GODOT_REPO }}-${{ env.GODOT_VERSION }}
 
       # ── SCons build cache ────────────────────────────────────────────────────
       # Keyed per cipher + OS so caches from different combinations never mix.
@@ -230,10 +231,26 @@ jobs:
             -j$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 4)
 
       # ── Upload artifacts ─────────────────────────────────────────────────────
+      # Each build output is uploaded as a separate artifact so individual
+      # files can be downloaded without fetching the entire bin/ directory.
 
-      - name: Upload binaries
+      - name: Upload editor
         uses: actions/upload-artifact@v7
         with:
-          name: godot-${{ matrix.cipher }}-${{ runner.os }}
-          path: godot-source/bin/
+          name: godot-editor-${{ matrix.cipher }}-${{ runner.os }}
+          path: godot-source/bin/*editor*
+          if-no-files-found: error
+
+      - name: Upload debug template
+        uses: actions/upload-artifact@v7
+        with:
+          name: godot-template-debug-${{ matrix.cipher }}-${{ runner.os }}
+          path: godot-source/bin/*template_debug*
+          if-no-files-found: error
+
+      - name: Upload release template
+        uses: actions/upload-artifact@v7
+        with:
+          name: godot-template-release-${{ matrix.cipher }}-${{ runner.os }}
+          path: godot-source/bin/*template_release*
           if-no-files-found: error
