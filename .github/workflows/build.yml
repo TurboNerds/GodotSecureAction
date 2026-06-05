@@ -17,16 +17,36 @@ env:
 
 jobs:
 
-  # ── Prepare: download and cache the clean Godot source once ─────────────────
-  # Each build job restores from this cache read-only so that no patched state
-  # is ever written back. The prepare job runs on Linux to maximise cache
-  # compatibility; the tarball contents are platform-independent C++ source.
+  # ── Prepare: resolve the encryption key and cache the clean Godot source ─────
+  # The encryption key is resolved once here and passed to all build jobs so
+  # every cipher/OS combination is encrypted with the same key.
+  # If GODOT_ENCRYPTION_KEY is set as a repository secret that value is used;
+  # otherwise a cryptographically secure 256-bit key is generated and masked so
+  # it does not appear in plain text in the workflow logs.
 
   prepare:
-    name: Cache Godot source
+    name: Resolve key + cache source
     runs-on: ubuntu-latest
 
+    outputs:
+      encryption-key: ${{ steps.keygen.outputs.encryption-key }}
+
     steps:
+      - name: Resolve encryption key
+        id: keygen
+        env:
+          GODOT_ENCRYPTION_KEY: ${{ secrets.GODOT_ENCRYPTION_KEY }}
+        run: |
+          if [ -n "$GODOT_ENCRYPTION_KEY" ]; then
+            KEY="$GODOT_ENCRYPTION_KEY"
+            echo "Using encryption key from GODOT_ENCRYPTION_KEY secret."
+          else
+            KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+            echo "No secret found — generated a new 256-bit encryption key."
+          fi
+          echo "::add-mask::$KEY"
+          echo "encryption-key=$KEY" >> "$GITHUB_OUTPUT"
+
       - name: Cache Godot source
         id: cache-source
         uses: actions/cache@v4
@@ -108,19 +128,12 @@ jobs:
       - name: Apply Godot Secure (${{ matrix.cipher }})
         shell: bash
         env:
-          GODOT_ENCRYPTION_KEY: ${{ secrets.GODOT_ENCRYPTION_KEY }}
+          GODOT_ENCRYPTION_KEY: ${{ needs.prepare.outputs.encryption-key }}
         run: |
-          # Use the provided key when the secret is set; generate a fresh one otherwise.
-          if [ -n "$GODOT_ENCRYPTION_KEY" ]; then
-            KEY_ARG="--key $GODOT_ENCRYPTION_KEY"
-          else
-            KEY_ARG="--generate-key"
-          fi
-
           python godot_secure.py godot-source \
             --mode apply \
             --algorithm ${{ matrix.cipher }} \
-            $KEY_ARG \
+            --key "$GODOT_ENCRYPTION_KEY" \
             --advanced-kdf \
             --non-interactive
 
