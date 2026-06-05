@@ -40,22 +40,25 @@ inputs:
 
   godot-secure-repo:
     description: >
-      GitHub repository to download godot_secure.py from
-      (e.g. emilymabrey93/Godot-Secure). Leave empty to skip downloading the
-      script — use this when you have already checked it out separately or do
-      not need it.
-    default: ''
+      GitHub repository to download the Godot Secure release artifact from.
+      Leave empty to skip downloading the script — use this when you have
+      already checked it out separately or do not need it.
+    default: 'emabrey/Godot-Secure'
 
-  godot-secure-ref:
+  godot-secure-tag:
     description: >
-      Branch name or release tag to download godot_secure.py from.
-      Examples: main, v1.2.0.
-    default: 'main'
+      Release tag to download the Godot Secure artifact from.
+      Example: v1.0.0-alpha, v1.2.0.
+    default: 'v1.0.0-alpha'
+
+  godot-secure-asset:
+    description: >
+      File name of the release asset to download.
+    default: 'godot_secure.py'
 
   godot-secure-script-path:
     description: >
-      Workspace-relative path where the downloaded godot_secure.py will be
-      written.
+      Workspace-relative path where the downloaded script will be written.
     default: 'godot_secure.py'
 
   # ── Build ────────────────────────────────────────────────────────────────────
@@ -117,7 +120,7 @@ outputs:
 
   godot-secure-script:
     description: >
-      Absolute path to the downloaded godot_secure.py. Empty when
+      Absolute path to the downloaded Godot Secure script. Empty when
       godot-secure-repo was not set.
     value: ${{ steps.fetch-godot-secure.outputs.script-path }}
 
@@ -214,26 +217,26 @@ runs:
         echo "source-path=$SOURCE_PATH" >> "$GITHUB_OUTPUT"
         echo "Godot source root: $SOURCE_PATH"
 
-    # ── Download godot_secure.py ───────────────────────────────────────────────
+    # ── Download Godot Secure release artifact ─────────────────────────────────
 
-    - name: Download godot_secure.py
+    - name: Download Godot Secure script
       if: inputs.godot-secure-repo != ''
       id: fetch-godot-secure
       shell: bash
       run: |
         REPO="${{ inputs.godot-secure-repo }}"
-        REF="${{ inputs.godot-secure-ref }}"
+        TAG="${{ inputs.godot-secure-tag }}"
+        ASSET="${{ inputs.godot-secure-asset }}"
         DEST="${{ inputs.godot-secure-script-path }}"
 
-        # Raw content URL works for both branches and release tags.
-        URL="https://raw.githubusercontent.com/${REPO}/${REF}/godot_secure.py"
+        URL="https://github.com/${REPO}/releases/download/${TAG}/${ASSET}"
 
-        echo "Downloading godot_secure.py from ${URL}"
+        echo "Downloading ${ASSET} from ${URL}"
         curl -fL "$URL" -o "$DEST"
 
         SCRIPT_ABS="$(pwd)/$DEST"
         echo "script-path=$SCRIPT_ABS" >> "$GITHUB_OUTPUT"
-        echo "godot_secure.py downloaded to ${SCRIPT_ABS}."
+        echo "Downloaded to ${SCRIPT_ABS}."
 
     # ── Linux system dependencies ──────────────────────────────────────────────
 

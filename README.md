@@ -21,8 +21,9 @@ This is the build-from-source counterpart to [appsinacup/action_setup_godot](htt
 
 | Input | Default | Description |
 |-------|---------|-------------|
-| `godot-secure-repo` | *(empty)* | GitHub repository to download `godot_secure.py` from (e.g. `emilymabrey93/Godot-Secure`). Leave empty to skip downloading the script. |
-| `godot-secure-ref` | `main` | Branch name or release tag to download `godot_secure.py` from. Examples: `main`, `v1.2.0`. |
+| `godot-secure-repo` | `emabrey/Godot-Secure` | GitHub repository to download the Godot Secure release artifact from. Leave empty to skip downloading the script. |
+| `godot-secure-tag` | `v1.0.0-alpha` | Release tag to download the artifact from. Example: `v1.0.0-alpha`, `v1.2.0`. |
+| `godot-secure-asset` | `godot_secure.py` | File name of the release asset to download. |
 | `godot-secure-script-path` | `godot_secure.py` | Workspace-relative path where the downloaded script will be written. |
 
 ### Build
@@ -80,25 +81,36 @@ The action downloads and caches the source automatically when `godot-version` is
     target: editor
 ```
 
-### Download a specific release of godot_secure.py
+### Download the default Godot Secure release (v1.0.0-alpha)
+
+`godot-secure-repo` defaults to `emabrey/Godot-Secure` and `godot-secure-tag` defaults to `v1.0.0-alpha`, so no extra inputs are needed to use the current stable release.
 
 ```yaml
 - uses: emilymabrey93/godot_secure_action@v1
   with:
     godot-version: 4.4-stable
-    godot-secure-repo: emilymabrey93/Godot-Secure
-    godot-secure-ref: v1.2.0
     target: editor
 ```
 
-### Download godot_secure.py from the main branch
+### Pin to a specific Godot Secure release
 
 ```yaml
 - uses: emilymabrey93/godot_secure_action@v1
   with:
     godot-version: 4.4-stable
-    godot-secure-repo: emilymabrey93/Godot-Secure
-    godot-secure-ref: main
+    godot-secure-repo: emabrey/Godot-Secure
+    godot-secure-tag: v1.2.0
+    target: editor
+```
+
+### Use a fork or alternate repo
+
+```yaml
+- uses: emilymabrey93/godot_secure_action@v1
+  with:
+    godot-version: 4.4-stable
+    godot-secure-repo: my-org/my-godot-secure-fork
+    godot-secure-tag: v2.0.0
     target: editor
 ```
 
@@ -179,17 +191,16 @@ jobs:
       - name: Checkout workflow repo
         uses: actions/checkout@v4
 
-      - name: Download Godot source and godot_secure.py
+      - name: Download Godot source and Godot Secure script
         id: setup
         uses: emilymabrey93/godot_secure_action@v1
         with:
           godot-version: 4.4-stable
           cache-godot-source: true
-          godot-secure-repo: emilymabrey93/Godot-Secure
-          godot-secure-ref: main
+          # godot-secure-repo and godot-secure-tag use their defaults:
+          # emabrey/Godot-Secure @ v1.0.0-alpha
           godot-secure-script-path: godot_secure.py
-          # Skip the build for now — we patch first, then build below.
-          target: editor
+          target: all
           scons-cache: true
           use-lto: true
 
@@ -239,7 +250,7 @@ Store `GODOT_ENCRYPTION_KEY` as an [encrypted Actions secret](https://docs.githu
 1. **Sets up Python** using `actions/setup-python`, then installs SCons via pip.
 2. **Restores the Godot source cache** (if `cache-godot-source` is true and `godot-version` is set). On a cache hit the download is skipped entirely.
 3. **Downloads the Godot source** as a tarball from GitHub when `godot-version` is set and no cached copy exists. Release tags and branch names are both supported — the action tries the tag URL first and falls back to the branch URL automatically.
-4. **Downloads `godot_secure.py`** via raw content URL when `godot-secure-repo` is set. Works for both branch names and release tags.
+4. **Downloads the Godot Secure release artifact** from `https://github.com/{godot-secure-repo}/releases/download/{godot-secure-tag}/{godot-secure-asset}` when `godot-secure-repo` is set. Defaults to the `godot_secure.py` asset from `emabrey/Godot-Secure` at `v1.0.0-alpha`.
 5. **Validates the source tree** by checking for `SConstruct` and fails fast with a clear error if it is missing.
 6. **Installs system dependencies** appropriate for the runner OS:
    - Linux: X11, OpenGL, audio, and input headers via `apt-get`
