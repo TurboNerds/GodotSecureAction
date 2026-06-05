@@ -1,32 +1,50 @@
 # GodotSecureAction
 
-A GitHub Action that compiles the Godot Engine editor and export templates from a C++ source tree.
+A GitHub Action that downloads the Godot Engine source, optionally downloads and applies [Godot Secure](https://github.com/emilymabrey93/Godot-Secure), then compiles the editor and/or export templates from source.
 
-This action is the build-from-source counterpart to [appsinacup/action_setup_godot](https://github.com/appsinacup/action_setup_godot), which downloads pre-built binaries. Use this action when you need to compile a patched or customised Godot build — for example, a source tree modified by [Godot Secure](https://github.com/emilymabrey93/Godot-Secure).
+This is the build-from-source counterpart to [appsinacup/action_setup_godot](https://github.com/appsinacup/action_setup_godot), which downloads pre-built binaries. Use this action when you need to compile a patched or customised Godot build.
 
 ---
 
 ## Inputs
 
-| Input | Required | Default | Description |
-|-------|----------|---------|-------------|
-| `godot-source` | No | `.` | Path to the Godot C++ source root, relative to the workspace. |
-| `target` | No | `editor` | Build target(s): `editor`, `template_debug`, `template_release`, or `all`. |
-| `platform` | No | *(auto)* | Target platform. Auto-detected from runner OS when omitted. |
-| `arch` | No | *(auto)* | Target architecture (e.g. `x86_64`, `arm64`, `universal`). Auto-detected when omitted. |
-| `precision` | No | `single` | Floating-point precision: `single` or `double`. |
-| `use-lto` | No | `false` | Enable link-time optimisation. Recommended only for release template builds. |
-| `extra-scons-args` | No | *(empty)* | Additional SCons arguments appended verbatim to every build invocation. |
-| `scons-cache` | No | `false` | Enable caching of the SCons build cache between runs. |
-| `scons-cache-path` | No | `.scons-cache` | Directory used for the SCons build cache. |
-| `python-version` | No | `3.x` | Python version to set up for running SCons. |
+### Godot source
+
+| Input | Default | Description |
+|-------|---------|-------------|
+| `godot-version` | *(empty)* | Godot version tag or branch to download (e.g. `4.4-stable`, `master`). When set the source is downloaded automatically. Leave empty if the source is already present in the workspace. |
+| `godot-repo` | `godotengine/godot` | GitHub repository to download Godot source from. |
+| `godot-source` | `godot-source` | Path where the Godot source root is, or will be downloaded to, relative to the workspace. |
+| `cache-godot-source` | `true` | Cache the downloaded Godot source between runs, keyed by `godot-repo` and `godot-version`. Has no effect when `godot-version` is empty. |
+
+### Godot Secure script
+
+| Input | Default | Description |
+|-------|---------|-------------|
+| `godot-secure-repo` | *(empty)* | GitHub repository to download `godot_secure.py` from (e.g. `emilymabrey93/Godot-Secure`). Leave empty to skip downloading the script. |
+| `godot-secure-ref` | `main` | Branch name or release tag to download `godot_secure.py` from. Examples: `main`, `v1.2.0`. |
+| `godot-secure-script-path` | `godot_secure.py` | Workspace-relative path where the downloaded script will be written. |
+
+### Build
+
+| Input | Default | Description |
+|-------|---------|-------------|
+| `target` | `editor` | Build target(s): `editor`, `template_debug`, `template_release`, or `all`. |
+| `platform` | *(auto)* | Target platform. Auto-detected from runner OS when omitted. |
+| `arch` | *(auto)* | Target architecture (e.g. `x86_64`, `arm64`, `universal`). Auto-detected when omitted. |
+| `precision` | `single` | Floating-point precision: `single` or `double`. |
+| `use-lto` | `false` | Enable link-time optimisation. Recommended only for release template builds. |
+| `extra-scons-args` | *(empty)* | Additional SCons arguments appended verbatim to every build invocation. |
+| `scons-cache` | `false` | Cache the SCons build cache between runs to speed up incremental builds. |
+| `scons-cache-path` | `.scons-cache` | Directory used for the SCons build cache. |
+| `python-version` | `3.x` | Python version to set up for running SCons. |
 
 ### Platform auto-detection
 
-When `platform` is not specified the action maps the GitHub Actions runner OS to the SCons platform name:
+When `platform` is not specified the action maps the runner OS to the SCons platform name:
 
 | Runner OS | SCons platform |
-|-----------|---------------|
+|-----------|----------------|
 | Linux | `linuxbsd` |
 | macOS | `macos` |
 | Windows | `windows` |
@@ -41,6 +59,8 @@ When `arch` is not specified the action uses `x86_64` on Linux and Windows runne
 
 | Output | Description |
 |--------|-------------|
+| `godot-source-path` | Absolute path to the Godot source tree used for the build. |
+| `godot-secure-script` | Absolute path to the downloaded `godot_secure.py`. Empty when `godot-secure-repo` was not set. |
 | `editor-path` | Absolute path to the compiled editor binary. Empty if not built. |
 | `template-debug-path` | Absolute path to the compiled debug export template. Empty if not built. |
 | `template-release-path` | Absolute path to the compiled release export template. Empty if not built. |
@@ -49,32 +69,57 @@ When `arch` is not specified the action uses `x86_64` on Linux and Windows runne
 
 ## Usage
 
-### Build the Godot editor on the current runner OS
+### Auto-download Godot source and build the editor
+
+The action downloads and caches the source automatically when `godot-version` is set.
 
 ```yaml
-- uses: emilymabrey93/action_godot_engine@v1
+- uses: emilymabrey93/godot_secure_action@v1
   with:
-    godot-source: vendored/godot
+    godot-version: 4.4-stable
+    target: editor
+```
+
+### Download a specific release of godot_secure.py
+
+```yaml
+- uses: emilymabrey93/godot_secure_action@v1
+  with:
+    godot-version: 4.4-stable
+    godot-secure-repo: emilymabrey93/Godot-Secure
+    godot-secure-ref: v1.2.0
+    target: editor
+```
+
+### Download godot_secure.py from the main branch
+
+```yaml
+- uses: emilymabrey93/godot_secure_action@v1
+  with:
+    godot-version: 4.4-stable
+    godot-secure-repo: emilymabrey93/Godot-Secure
+    godot-secure-ref: main
     target: editor
 ```
 
 ### Build all targets with caching and LTO
 
 ```yaml
-- uses: emilymabrey93/action_godot_engine@v1
+- uses: emilymabrey93/godot_secure_action@v1
   with:
-    godot-source: vendored/godot
+    godot-version: 4.4-stable
     target: all
     use-lto: true
     scons-cache: true
+    cache-godot-source: true
 ```
 
 ### Pass custom SCons arguments
 
 ```yaml
-- uses: emilymabrey93/action_godot_engine@v1
+- uses: emilymabrey93/godot_secure_action@v1
   with:
-    godot-source: vendored/godot
+    godot-version: 4.4-stable
     target: editor
     extra-scons-args: use_llvm=yes linker=mold
 ```
@@ -82,11 +127,11 @@ When `arch` is not specified the action uses `x86_64` on Linux and Windows runne
 ### Use the output paths in a downstream step
 
 ```yaml
-- name: Build Godot editor
+- name: Build Godot
   id: godot-build
-  uses: emilymabrey93/action_godot_engine@v1
+  uses: emilymabrey93/godot_secure_action@v1
   with:
-    godot-source: vendored/godot
+    godot-version: 4.4-stable
     target: editor
 
 - name: Run headless tests
@@ -95,11 +140,28 @@ When `arch` is not specified the action uses `x86_64` on Linux and Windows runne
       --headless --path my_project --quit
 ```
 
+### Use a pre-checked-out source tree (no auto-download)
+
+Set `godot-source` to the path of your existing checkout and omit `godot-version`.
+
+```yaml
+- uses: actions/checkout@v4
+  with:
+    repository: godotengine/godot
+    ref: 4.4-stable
+    path: godot-source
+
+- uses: emilymabrey93/godot_secure_action@v1
+  with:
+    godot-source: godot-source
+    target: editor
+```
+
 ---
 
 ## Full workflow example — Godot Secure + build
 
-This is the intended end-to-end workflow when using Godot Secure to produce a cryptographically unique Godot build.
+This is the intended end-to-end workflow. The action downloads both the Godot source and `godot_secure.py`, then you patch and build in a single job.
 
 ```yaml
 name: Build Godot Secure Engine
@@ -117,24 +179,26 @@ jobs:
       - name: Checkout workflow repo
         uses: actions/checkout@v4
 
-      - name: Checkout Godot source
-        uses: actions/checkout@v4
+      - name: Download Godot source and godot_secure.py
+        id: setup
+        uses: emilymabrey93/godot_secure_action@v1
         with:
-          repository: godotengine/godot
-          ref: 4.4-stable
-          path: godot-source
+          godot-version: 4.4-stable
+          cache-godot-source: true
+          godot-secure-repo: emilymabrey93/Godot-Secure
+          godot-secure-ref: main
+          godot-secure-script-path: godot_secure.py
+          # Skip the build for now — we patch first, then build below.
+          target: editor
+          scons-cache: true
+          use-lto: true
 
-      - name: Checkout Godot Secure
-        uses: actions/checkout@v4
-        with:
-          repository: emilymabrey93/Godot-Secure
-          path: godot-secure
-
-      - name: Patch Godot source with Godot Secure
+      - name: Apply Godot Secure patch
         env:
           SCRIPT_AES256_ENCRYPTION_KEY: ${{ secrets.GODOT_ENCRYPTION_KEY }}
         run: |
-          python godot-secure/godot_secure.py godot-source \
+          python "${{ steps.setup.outputs.godot-secure-script }}" \
+            "${{ steps.setup.outputs.godot-source-path }}" \
             --mode apply \
             --algorithm aes \
             --advanced-kdf \
@@ -147,32 +211,23 @@ jobs:
           path: godot_secure_*.log
           if-no-files-found: warn
 
-      - name: Build Godot editor and export templates
-        id: godot-build
-        uses: emilymabrey93/action_godot_engine@v1
-        with:
-          godot-source: godot-source
-          target: all
-          scons-cache: true
-          use-lto: true
-
       - name: Upload editor binary
         uses: actions/upload-artifact@v4
         with:
           name: godot-editor-linux
-          path: ${{ steps.godot-build.outputs.editor-path }}
+          path: ${{ steps.setup.outputs.editor-path }}
 
       - name: Upload debug template
         uses: actions/upload-artifact@v4
         with:
           name: godot-template-debug-linux
-          path: ${{ steps.godot-build.outputs.template-debug-path }}
+          path: ${{ steps.setup.outputs.template-debug-path }}
 
       - name: Upload release template
         uses: actions/upload-artifact@v4
         with:
           name: godot-template-release-linux
-          path: ${{ steps.godot-build.outputs.template-release-path }}
+          path: ${{ steps.setup.outputs.template-release-path }}
 ```
 
 Store `GODOT_ENCRYPTION_KEY` as an [encrypted Actions secret](https://docs.github.com/en/actions/security-guides/encrypted-secrets). The Godot Secure log uploaded as an artifact contains the security token — store it in secure external storage immediately.
@@ -182,18 +237,23 @@ Store `GODOT_ENCRYPTION_KEY` as an [encrypted Actions secret](https://docs.githu
 ## How it works
 
 1. **Sets up Python** using `actions/setup-python`, then installs SCons via pip.
-2. **Installs system dependencies** appropriate for the runner OS:
+2. **Restores the Godot source cache** (if `cache-godot-source` is true and `godot-version` is set). On a cache hit the download is skipped entirely.
+3. **Downloads the Godot source** as a tarball from GitHub when `godot-version` is set and no cached copy exists. Release tags and branch names are both supported — the action tries the tag URL first and falls back to the branch URL automatically.
+4. **Downloads `godot_secure.py`** via raw content URL when `godot-secure-repo` is set. Works for both branch names and release tags.
+5. **Validates the source tree** by checking for `SConstruct` and fails fast with a clear error if it is missing.
+6. **Installs system dependencies** appropriate for the runner OS:
    - Linux: X11, OpenGL, audio, and input headers via `apt-get`
    - macOS: yasm via Homebrew (Xcode command-line tools are pre-installed)
    - Windows: no extra steps required — MSVC is pre-installed on GitHub-hosted runners
-3. **Restores the SCons cache** (optional) to speed up incremental rebuilds.
-4. **Runs SCons** for each requested target, parallelising across all available CPU cores.
-5. **Locates the compiled binaries** under the `bin/` directory and writes their absolute paths to the action outputs.
+7. **Restores the SCons build cache** (optional) to speed up incremental rebuilds.
+8. **Runs SCons** for each requested target, parallelising across all available CPU cores.
+9. **Locates the compiled binaries** under the `bin/` directory and writes their absolute paths to the action outputs.
 
 ---
 
 ## Requirements
 
-- The Godot C++ source tree must already be present in the workspace before this action runs.
 - Godot 4.x source is supported.
-- For Godot Secure builds, run the Godot Secure patch script **before** this action.
+- When using `godot-version`, no pre-existing source checkout is needed — the action handles it.
+- When `godot-version` is omitted, the Godot source must already be present at `godot-source`.
+- For Godot Secure builds, run the patch script **after** this action downloads the source and **before** the build step invocation (or use a two-step approach as shown in the workflow example above).
