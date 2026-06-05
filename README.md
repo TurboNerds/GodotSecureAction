@@ -12,7 +12,7 @@ This is the build-from-source counterpart to [appsinacup/action_setup_godot](htt
 
 | Input | Default | Description |
 |-------|---------|-------------|
-| `godot-version` | *(empty)* | Godot version tag or branch to download (e.g. `4.4-stable`, `master`). When set the source is downloaded automatically. Leave empty if the source is already present in the workspace. |
+| `godot-version` | `4.6-stable` | Godot version tag or branch to download (e.g. `4.6-stable`, `master`). The source is downloaded automatically. Leave empty if the source is already present in the workspace. |
 | `godot-repo` | `godotengine/godot` | GitHub repository to download Godot source from. |
 | `godot-source` | `godot-source` | Path where the Godot source root is, or will be downloaded to, relative to the workspace. |
 | `cache-godot-source` | `true` | Cache the downloaded Godot source between runs, keyed by `godot-repo` and `godot-version`. Has no effect when `godot-version` is empty. |
@@ -22,9 +22,7 @@ This is the build-from-source counterpart to [appsinacup/action_setup_godot](htt
 | Input | Default | Description |
 |-------|---------|-------------|
 | `godot-secure-repo` | `emabrey/Godot-Secure` | GitHub repository to download the Godot Secure release artifact from. Leave empty to skip downloading the script. |
-| `godot-secure-tag` | `v1.0.0-alpha` | Release tag to download the artifact from. Example: `v1.0.0-alpha`, `v1.2.0`. |
-| `godot-secure-asset` | `godot_secure.py` | File name of the release asset to download. |
-| `godot-secure-script-path` | `godot_secure.py` | Workspace-relative path where the downloaded script will be written. |
+| `godot-secure-tag` | `v1.0.0-alpha` | Release tag to download `godot_secure.py` from. Example: `v1.0.0-alpha`, `v1.2.0`. |
 
 ### Build
 
@@ -61,7 +59,7 @@ When `arch` is not specified the action uses `x86_64` on Linux and Windows runne
 | Output | Description |
 |--------|-------------|
 | `godot-source-path` | Absolute path to the Godot source tree used for the build. |
-| `godot-secure-script` | Absolute path to the downloaded `godot_secure.py`. Empty when `godot-secure-repo` was not set. |
+| `godot-secure-script` | Absolute path to the downloaded `godot_secure.py` in the workspace root. Empty when `godot-secure-repo` was not set. |
 | `editor-path` | Absolute path to the compiled editor binary. Empty if not built. |
 | `template-debug-path` | Absolute path to the compiled debug export template. Empty if not built. |
 | `template-release-path` | Absolute path to the compiled release export template. Empty if not built. |
@@ -77,7 +75,7 @@ The action downloads and caches the source automatically when `godot-version` is
 ```yaml
 - uses: emilymabrey93/godot_secure_action@v1
   with:
-    godot-version: 4.4-stable
+    godot-version: 4.6-stable
     target: editor
 ```
 
@@ -88,7 +86,7 @@ The action downloads and caches the source automatically when `godot-version` is
 ```yaml
 - uses: emilymabrey93/godot_secure_action@v1
   with:
-    godot-version: 4.4-stable
+    godot-version: 4.6-stable
     target: editor
 ```
 
@@ -97,7 +95,7 @@ The action downloads and caches the source automatically when `godot-version` is
 ```yaml
 - uses: emilymabrey93/godot_secure_action@v1
   with:
-    godot-version: 4.4-stable
+    godot-version: 4.6-stable
     godot-secure-repo: emabrey/Godot-Secure
     godot-secure-tag: v1.2.0
     target: editor
@@ -108,7 +106,7 @@ The action downloads and caches the source automatically when `godot-version` is
 ```yaml
 - uses: emilymabrey93/godot_secure_action@v1
   with:
-    godot-version: 4.4-stable
+    godot-version: 4.6-stable
     godot-secure-repo: my-org/my-godot-secure-fork
     godot-secure-tag: v2.0.0
     target: editor
@@ -119,7 +117,7 @@ The action downloads and caches the source automatically when `godot-version` is
 ```yaml
 - uses: emilymabrey93/godot_secure_action@v1
   with:
-    godot-version: 4.4-stable
+    godot-version: 4.6-stable
     target: all
     use-lto: true
     scons-cache: true
@@ -131,7 +129,7 @@ The action downloads and caches the source automatically when `godot-version` is
 ```yaml
 - uses: emilymabrey93/godot_secure_action@v1
   with:
-    godot-version: 4.4-stable
+    godot-version: 4.6-stable
     target: editor
     extra-scons-args: use_llvm=yes linker=mold
 ```
@@ -143,7 +141,7 @@ The action downloads and caches the source automatically when `godot-version` is
   id: godot-build
   uses: emilymabrey93/godot_secure_action@v1
   with:
-    godot-version: 4.4-stable
+    godot-version: 4.6-stable
     target: editor
 
 - name: Run headless tests
@@ -160,7 +158,7 @@ Set `godot-source` to the path of your existing checkout and omit `godot-version
 - uses: actions/checkout@v4
   with:
     repository: godotengine/godot
-    ref: 4.4-stable
+    ref: 4.6-stable
     path: godot-source
 
 - uses: emilymabrey93/godot_secure_action@v1
@@ -195,11 +193,10 @@ jobs:
         id: setup
         uses: emilymabrey93/godot_secure_action@v1
         with:
-          godot-version: 4.4-stable
+          godot-version: 4.6-stable
           cache-godot-source: true
           # godot-secure-repo and godot-secure-tag use their defaults:
           # emabrey/Godot-Secure @ v1.0.0-alpha
-          godot-secure-script-path: godot_secure.py
           target: all
           scons-cache: true
           use-lto: true
