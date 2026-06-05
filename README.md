@@ -2,8 +2,6 @@
 
 A GitHub Action that downloads the Godot Engine source, optionally downloads and applies [Godot Secure](https://github.com/emilymabrey93/Godot-Secure), then compiles the editor and/or export templates from source.
 
-This is the build-from-source counterpart to [appsinacup/action_setup_godot](https://github.com/appsinacup/action_setup_godot), which downloads pre-built binaries. Use this action when you need to compile a patched or customised Godot build.
-
 ---
 
 ## Inputs
@@ -73,7 +71,7 @@ When `arch` is not specified the action uses `x86_64` on Linux and Windows runne
 The action downloads and caches the source automatically when `godot-version` is set.
 
 ```yaml
-- uses: emilymabrey93/godot_secure_action@v1
+- uses: emabrey/GodotSecureAction@v1
   with:
     godot-version: 4.6-stable
     target: editor
@@ -84,7 +82,7 @@ The action downloads and caches the source automatically when `godot-version` is
 `godot-secure-repo` defaults to `emabrey/Godot-Secure` and `godot-secure-tag` defaults to `v1.0.0-alpha`, so no extra inputs are needed to use the current stable release.
 
 ```yaml
-- uses: emilymabrey93/godot_secure_action@v1
+- uses: emabrey/GodotSecureAction@v1
   with:
     godot-version: 4.6-stable
     target: editor
@@ -93,7 +91,7 @@ The action downloads and caches the source automatically when `godot-version` is
 ### Pin to a specific Godot Secure release
 
 ```yaml
-- uses: emilymabrey93/godot_secure_action@v1
+- uses: emabrey/GodotSecureAction@v1
   with:
     godot-version: 4.6-stable
     godot-secure-repo: emabrey/Godot-Secure
@@ -104,7 +102,7 @@ The action downloads and caches the source automatically when `godot-version` is
 ### Use a fork or alternate repo
 
 ```yaml
-- uses: emilymabrey93/godot_secure_action@v1
+- uses: emabrey/GodotSecureAction@v1
   with:
     godot-version: 4.6-stable
     godot-secure-repo: my-org/my-godot-secure-fork
@@ -115,7 +113,7 @@ The action downloads and caches the source automatically when `godot-version` is
 ### Build all targets with caching and LTO
 
 ```yaml
-- uses: emilymabrey93/godot_secure_action@v1
+- uses: emabrey/GodotSecureAction@v1
   with:
     godot-version: 4.6-stable
     target: all
@@ -127,7 +125,7 @@ The action downloads and caches the source automatically when `godot-version` is
 ### Pass custom SCons arguments
 
 ```yaml
-- uses: emilymabrey93/godot_secure_action@v1
+- uses: emabrey/GodotSecureAction@v1
   with:
     godot-version: 4.6-stable
     target: editor
@@ -139,7 +137,7 @@ The action downloads and caches the source automatically when `godot-version` is
 ```yaml
 - name: Build Godot
   id: godot-build
-  uses: emilymabrey93/godot_secure_action@v1
+  uses: emabrey/GodotSecureAction@v1
   with:
     godot-version: 4.6-stable
     target: editor
@@ -161,7 +159,7 @@ Set `godot-source` to the path of your existing checkout and omit `godot-version
     ref: 4.6-stable
     path: godot-source
 
-- uses: emilymabrey93/godot_secure_action@v1
+- uses: emabrey/GodotSecureAction@v1
   with:
     godot-source: godot-source
     target: editor
@@ -191,7 +189,7 @@ jobs:
 
       - name: Download Godot source and Godot Secure script
         id: setup
-        uses: emilymabrey93/godot_secure_action@v1
+        uses: emabrey/GodotSecureAction@v1
         with:
           godot-version: 4.6-stable
           cache-godot-source: true
