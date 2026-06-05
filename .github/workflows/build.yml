@@ -108,12 +108,19 @@ jobs:
       - name: Apply Godot Secure (${{ matrix.cipher }})
         shell: bash
         env:
-          SCRIPT_AES256_ENCRYPTION_KEY: ${{ secrets.GODOT_ENCRYPTION_KEY }}
+          GODOT_ENCRYPTION_KEY: ${{ secrets.GODOT_ENCRYPTION_KEY }}
         run: |
+          # Use the provided key when the secret is set; generate a fresh one otherwise.
+          if [ -n "$GODOT_ENCRYPTION_KEY" ]; then
+            KEY_ARG="--key $GODOT_ENCRYPTION_KEY"
+          else
+            KEY_ARG="--generate-key"
+          fi
+
           python godot_secure.py godot-source \
             --mode apply \
             --algorithm ${{ matrix.cipher }} \
-            --generate-key \
+            $KEY_ARG \
             --advanced-kdf \
             --non-interactive
 
