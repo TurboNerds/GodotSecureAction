@@ -1,0 +1,303 @@
+name: GodotSecureAction
+
+description: >
+  GitHub Action to compile the Godot Engine editor and/or export templates
+  from a C++ source tree. Designed to work with patched source trees such as
+  those produced by Godot Secure.
+
+inputs:
+  godot-source:
+    description: >
+      Path to the Godot C++ source root, relative to the workspace.
+      Defaults to the workspace root.
+    default: '.'
+
+  target:
+    description: >
+      Build target(s) to compile.
+      Accepted values: editor, template_debug, template_release, all.
+      'all' compiles editor + template_debug + template_release.
+    default: 'editor'
+
+  platform:
+    description: >
+      Target platform. When left empty the platform is auto-detected from the
+      runner OS (linux, macos, windows). Set explicitly to cross-compile.
+    default: ''
+
+  arch:
+    description: >
+      Target architecture. When left empty the architecture is auto-detected.
+      Common values: x86_64, arm64, universal (macOS fat binary).
+    default: ''
+
+  precision:
+    description: >
+      Floating-point precision to build with.
+      Accepted values: single, double.
+    default: 'single'
+
+  use-lto:
+    description: Enable link-time optimisation for release template builds.
+    default: 'false'
+
+  extra-scons-args:
+    description: >
+      Additional SCons arguments appended verbatim to every scons invocation.
+      Example: "use_llvm=yes use_mingw=no"
+    default: ''
+
+  scons-cache:
+    description: >
+      Enable caching of the SCons build cache to speed up repeat builds.
+    default: 'false'
+
+  scons-cache-path:
+    description: Path used for the SCons build cache directory.
+    default: '.scons-cache'
+
+  python-version:
+    description: >
+      Python version to set up for running SCons.
+      Leave empty to use whatever Python is already on the runner.
+    default: '3.x'
+
+outputs:
+  editor-path:
+    description: Absolute path to the compiled editor binary (if built).
+    value: ${{ steps.locate-bins.outputs.editor-path }}
+
+  template-debug-path:
+    description: Absolute path to the compiled debug export template (if built).
+    value: ${{ steps.locate-bins.outputs.template-debug-path }}
+
+  template-release-path:
+    description: Absolute path to the compiled release export template (if built).
+    value: ${{ steps.locate-bins.outputs.template-release-path }}
+
+author: Godot Secure
+branding:
+  icon: 'cpu'
+  color: 'blue'
+
+runs:
+  using: 'composite'
+  steps:
+
+    # ── Python + SCons ─────────────────────────────────────────────────────────
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install SCons
+      shell: bash
+      run: pip install scons
+
+    # ── Linux system dependencies ──────────────────────────────────────────────
+
+    - name: Install Linux build dependencies
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y \
+          build-essential \
+          libx11-dev \
+          libxcursor-dev \
+          libxrandr-dev \
+          libxinerama-dev \
+          libxi-dev \
+          libxext-dev \
+          libxrender-dev \
+          libgl1-mesa-dev \
+          libasound2-dev \
+          libpulse-dev \
+          libudev-dev \
+          libdbus-1-dev \
+          libfreetype-dev \
+          pkg-config \
+          yasm
+
+    # ── macOS dependencies ─────────────────────────────────────────────────────
+
+    - name: Install macOS build dependencies
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        # Xcode command-line tools are pre-installed on GitHub-hosted macOS runners.
+        # Ensure yasm is available for audio codecs.
+        brew install yasm || true
+
+    # ── SCons cache ────────────────────────────────────────────────────────────
+
+    - name: Restore SCons cache
+      if: inputs.scons-cache == 'true'
+      uses: actions/cache@v4
+      with:
+        path: ${{ inputs.scons-cache-path }}
+        key: >-
+          scons-${{ inputs.godot-source }}-${{ inputs.platform }}-${{ inputs.arch
+          }}-${{ inputs.precision }}-${{ inputs.target }}-${{ runner.os }}-${{
+          hashFiles(format('{0}/version.py', inputs.godot-source)) }}
+        restore-keys: |
+          scons-${{ inputs.godot-source }}-${{ inputs.platform }}-${{ inputs.arch }}-${{ inputs.precision }}-${{ inputs.target }}-${{ runner.os }}-
+          scons-${{ inputs.godot-source }}-${{ inputs.platform }}-${{ inputs.arch }}-${{ inputs.precision }}-${{ runner.os }}-
+
+    # ── Resolve build parameters ───────────────────────────────────────────────
+
+    - name: Resolve platform, arch, and targets
+      id: params
+      shell: bash
+      run: |
+        # ── Platform ──────────────────────────────────────────────────────────
+        PLATFORM="${{ inputs.platform }}"
+        if [ -z "$PLATFORM" ]; then
+          case "${{ runner.os }}" in
+            Linux)   PLATFORM="linuxbsd" ;;
+            macOS)   PLATFORM="macos"    ;;
+            Windows) PLATFORM="windows"  ;;
+            *)
+              echo "::error::Unsupported runner OS: ${{ runner.os }}"
+              exit 1
+              ;;
+          esac
+        fi
+        echo "platform=$PLATFORM" >> "$GITHUB_OUTPUT"
+
+        # ── Architecture ──────────────────────────────────────────────────────
+        ARCH="${{ inputs.arch }}"
+        if [ -z "$ARCH" ]; then
+          case "${{ runner.os }}" in
+            Linux)
+              ARCH="x86_64"
+              ;;
+            macOS)
+              # Build a fat binary on macOS by default when both slices are available.
+              ARCH="universal"
+              ;;
+            Windows)
+              ARCH="x86_64"
+              ;;
+          esac
+        fi
+        echo "arch=$ARCH" >> "$GITHUB_OUTPUT"
+
+        # ── Targets ───────────────────────────────────────────────────────────
+        RAW_TARGET="${{ inputs.target }}"
+        if [ "$RAW_TARGET" == "all" ]; then
+          echo "targets=editor template_debug template_release" >> "$GITHUB_OUTPUT"
+        else
+          echo "targets=$RAW_TARGET" >> "$GITHUB_OUTPUT"
+        fi
+
+        # ── SCons cache arg ───────────────────────────────────────────────────
+        if [ "${{ inputs.scons-cache }}" == "true" ]; then
+          echo "cache-arg=cache_path=${{ inputs.scons-cache-path }}" >> "$GITHUB_OUTPUT"
+        else
+          echo "cache-arg=" >> "$GITHUB_OUTPUT"
+        fi
+
+    # ── Build ──────────────────────────────────────────────────────────────────
+
+    - name: Build Godot
+      shell: bash
+      working-directory: ${{ inputs.godot-source }}
+      run: |
+        PLATFORM="${{ steps.params.outputs.platform }}"
+        ARCH="${{ steps.params.outputs.arch }}"
+        PRECISION="${{ inputs.precision }}"
+        LTO="${{ inputs.use-lto }}"
+        EXTRA="${{ inputs.extra-scons-args }}"
+        CACHE_ARG="${{ steps.params.outputs.cache-arg }}"
+
+        # Build arch flag — omit when empty so SCons uses its own default.
+        ARCH_ARG=""
+        if [ -n "$ARCH" ]; then
+          ARCH_ARG="arch=$ARCH"
+        fi
+
+        # LTO is only useful for release builds and adds significant link time.
+        LTO_ARG="lto=none"
+        if [ "$LTO" == "true" ]; then
+          LTO_ARG="lto=thin"
+        fi
+
+        for TARGET in ${{ steps.params.outputs.targets }}; do
+          echo "::group::SCons — platform=$PLATFORM target=$TARGET"
+          scons \
+            platform="$PLATFORM" \
+            target="$TARGET" \
+            precision="$PRECISION" \
+            $ARCH_ARG \
+            $LTO_ARG \
+            $CACHE_ARG \
+            $EXTRA \
+            -j$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 2)
+          echo "::endgroup::"
+        done
+
+    # ── Locate compiled binaries and set outputs ───────────────────────────────
+
+    - name: Locate compiled binaries
+      id: locate-bins
+      shell: bash
+      working-directory: ${{ inputs.godot-source }}
+      run: |
+        PLATFORM="${{ steps.params.outputs.platform }}"
+        SOURCE_ABS="$(pwd)"
+
+        locate_bin() {
+          local target="$1"
+          local result=""
+
+          case "$PLATFORM" in
+            macos)
+              # SCons places the macOS editor inside a .app bundle.
+              result=$(find bin -type f -name "Godot*" -path "*/MacOS/Godot" 2>/dev/null | grep -i "$target" | head -n 1)
+              if [ -z "$result" ]; then
+                result=$(find bin -type f -name "*.macos.*" 2>/dev/null | grep -i "$target" | head -n 1)
+              fi
+              ;;
+            windows)
+              result=$(find bin -type f -name "*.exe" 2>/dev/null | grep -v "console" | grep -i "$target" | head -n 1)
+              ;;
+            *)
+              result=$(find bin -type f -executable 2>/dev/null | grep -i "$target" | head -n 1)
+              ;;
+          esac
+
+          if [ -n "$result" ]; then
+            echo "$SOURCE_ABS/$result"
+          fi
+        }
+
+        EDITOR_PATH=""
+        DEBUG_PATH=""
+        RELEASE_PATH=""
+
+        for TARGET in ${{ steps.params.outputs.targets }}; do
+          case "$TARGET" in
+            editor)
+              EDITOR_PATH=$(locate_bin "editor")
+              ;;
+            template_debug)
+              DEBUG_PATH=$(locate_bin "template_debug")
+              ;;
+            template_release)
+              RELEASE_PATH=$(locate_bin "template_release")
+              ;;
+          esac
+        done
+
+        echo "editor-path=$EDITOR_PATH"           >> "$GITHUB_OUTPUT"
+        echo "template-debug-path=$DEBUG_PATH"    >> "$GITHUB_OUTPUT"
+        echo "template-release-path=$RELEASE_PATH" >> "$GITHUB_OUTPUT"
+
+        # Surface binary locations in the log for easy debugging.
+        echo "── Compiled binaries ────────────────────────────────────────"
+        [ -n "$EDITOR_PATH"  ] && echo "  editor          : $EDITOR_PATH"
+        [ -n "$DEBUG_PATH"   ] && echo "  template_debug  : $DEBUG_PATH"
+        [ -n "$RELEASE_PATH" ] && echo "  template_release: $RELEASE_PATH"
+        echo "─────────────────────────────────────────────────────────────"
