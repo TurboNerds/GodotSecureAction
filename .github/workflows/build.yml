@@ -18,34 +18,13 @@ env:
 
 jobs:
 
-  # ── Prepare: download and cache the clean Godot source once ─────────────────
-
-  prepare:
-    name: Cache Godot source
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Cache Godot source
-        id: cache-source
-        uses: actions/cache@v4
-        with:
-          path: godot-source
-          key: godot-source-${{ env.GODOT_REPO }}-${{ env.GODOT_VERSION }}
-
-      - name: Download Godot source
-        if: steps.cache-source.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p godot-source
-          curl -fL \
-            "https://github.com/${{ env.GODOT_REPO }}/archive/refs/tags/${{ env.GODOT_VERSION }}.tar.gz" \
-            | tar -xz --strip-components=1 -C godot-source
-          echo "Downloaded Godot ${{ env.GODOT_VERSION }} source."
-
   # ── Build matrix: 3 ciphers × 3 OSes = 9 parallel jobs ─────────────────────
+  # GitHub Actions caches are OS-scoped, so the Godot source is cached and
+  # downloaded independently on each runner OS. Each job handles its own
+  # cache restore/save rather than sharing through a prepare job.
 
   build:
     name: ${{ matrix.cipher }} / ${{ matrix.os }}
-    needs: prepare
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -66,16 +45,26 @@ jobs:
       - name: Install SCons
         run: pip install scons
 
-      # ── Restore clean Godot source (read-only) ───────────────────────────────
-      # actions/cache/restore does not save at job end, so each job starts with
-      # the unmodified source regardless of what other jobs have patched.
+      # ── Godot source (per-OS cache) ──────────────────────────────────────────
+      # Cache key includes runner.os so Linux, macOS, and Windows never share
+      # an incompatible cache entry.
 
-      - name: Restore Godot source
-        uses: actions/cache/restore@v4
+      - name: Cache Godot source
+        id: cache-source
+        uses: actions/cache@v4
         with:
           path: godot-source
-          key: godot-source-${{ env.GODOT_REPO }}-${{ env.GODOT_VERSION }}
-          fail-on-cache-miss: true
+          key: godot-source-${{ env.GODOT_REPO }}-${{ env.GODOT_VERSION }}-${{ runner.os }}
+
+      - name: Download Godot source
+        if: steps.cache-source.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          mkdir -p godot-source
+          curl -fL \
+            "https://github.com/${{ env.GODOT_REPO }}/archive/refs/tags/${{ env.GODOT_VERSION }}.tar.gz" \
+            | tar -xz --strip-components=1 -C godot-source
+          echo "Downloaded Godot ${{ env.GODOT_VERSION }} source."
 
       # ── SCons build cache ────────────────────────────────────────────────────
       # Keyed per cipher + OS so caches from different combinations never mix.
@@ -143,23 +132,42 @@ jobs:
             libudev-dev \
             libdbus-1-dev \
             libfreetype-dev \
+            libwayland-dev \
+            wayland-protocols \
+            libxkbcommon-dev \
+            libdecor-0-dev \
             pkg-config \
             yasm
 
       - name: Install macOS build dependencies
         if: runner.os == 'macOS'
-        run: brew install yasm || true
+        run: |
+          brew install molten-vk yasm
 
-      # ── Detect SCons platform ────────────────────────────────────────────────
+      # ── Detect platform and resolve platform-specific SCons args ─────────────
 
-      - name: Detect SCons platform
+      - name: Detect platform
         id: platform
         shell: bash
         run: |
           case "${{ runner.os }}" in
-            Linux)   echo "value=linuxbsd" >> "$GITHUB_OUTPUT" ;;
-            macOS)   echo "value=macos"    >> "$GITHUB_OUTPUT" ;;
-            Windows) echo "value=windows"  >> "$GITHUB_OUTPUT" ;;
+            Linux)
+              echo "value=linuxbsd" >> "$GITHUB_OUTPUT"
+              echo "extra-args=" >> "$GITHUB_OUTPUT"
+              ;;
+            macOS)
+              # MoltenVK is installed by brew into its own prefix-relative opt dir.
+              VULKAN_PATH="$(brew --prefix molten-vk)"
+              echo "value=macos" >> "$GITHUB_OUTPUT"
+              echo "extra-args=vulkan_sdk_path=${VULKAN_PATH}" >> "$GITHUB_OUTPUT"
+              ;;
+            Windows)
+              # d3d12=yes causes Godot's SCons scripts to download the D3D12
+              # Agility SDK and DXC shader compiler via NuGet automatically.
+              # NuGet is pre-installed on GitHub-hosted Windows runners.
+              echo "value=windows" >> "$GITHUB_OUTPUT"
+              echo "extra-args=d3d12=yes" >> "$GITHUB_OUTPUT"
+              ;;
           esac
 
       # ── Build ────────────────────────────────────────────────────────────────
@@ -171,6 +179,7 @@ jobs:
           scons \
             platform=${{ steps.platform.outputs.value }} \
             target=editor \
+            ${{ steps.platform.outputs.extra-args }} \
             cache_path=../.scons-cache \
             -j$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 4)
 
@@ -181,6 +190,7 @@ jobs:
           scons \
             platform=${{ steps.platform.outputs.value }} \
             target=template_debug \
+            ${{ steps.platform.outputs.extra-args }} \
             cache_path=../.scons-cache \
             -j$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 4)
 
@@ -191,6 +201,7 @@ jobs:
           scons \
             platform=${{ steps.platform.outputs.value }} \
             target=template_release \
+            ${{ steps.platform.outputs.extra-args }} \
             lto=thin \
             cache_path=../.scons-cache \
             -j$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 4)
