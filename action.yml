@@ -48,8 +48,8 @@ inputs:
   godot-secure-tag:
     description: >
       Release tag to download the Godot Secure artifact from.
-      Example: v1.0.1-alpha, v1.2.0.
-    default: 'v1.0.1-alpha'
+      Example: v1.0.2-alpha, v1.2.0.
+    default: 'v1.0.2-alpha'
 
 
   # ── Build ────────────────────────────────────────────────────────────────────
