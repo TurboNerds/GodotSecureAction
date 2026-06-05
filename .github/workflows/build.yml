@@ -45,13 +45,19 @@ jobs:
       - name: Install SCons
         run: pip install scons
 
-      # ── Godot source (per-OS cache) ──────────────────────────────────────────
+      # ── Godot source (per-OS cache, clean only) ──────────────────────────────
       # Cache key includes runner.os so Linux, macOS, and Windows never share
       # an incompatible cache entry.
+      #
+      # actions/cache/restore is used instead of actions/cache so the cache is
+      # never saved at job end. Each job patches the source tree with a
+      # different cipher; saving after patching would pollute the cache with
+      # cipher-specific modifications. The clean source is saved explicitly
+      # with actions/cache/save immediately after download, before any patching.
 
-      - name: Cache Godot source
+      - name: Restore Godot source cache
         id: cache-source
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: godot-source
           key: godot-source-${{ env.GODOT_REPO }}-${{ env.GODOT_VERSION }}-${{ runner.os }}
@@ -65,6 +71,13 @@ jobs:
             "https://github.com/${{ env.GODOT_REPO }}/archive/refs/tags/${{ env.GODOT_VERSION }}.tar.gz" \
             | tar -xz --strip-components=1 -C godot-source
           echo "Downloaded Godot ${{ env.GODOT_VERSION }} source."
+
+      - name: Save Godot source cache
+        if: steps.cache-source.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: godot-source
+          key: godot-source-${{ env.GODOT_REPO }}-${{ env.GODOT_VERSION }}-${{ runner.os }}
 
       # ── SCons build cache ────────────────────────────────────────────────────
       # Keyed per cipher + OS so caches from different combinations never mix.
