@@ -163,20 +163,20 @@ jobs:
           case "${{ runner.os }}" in
             Linux)
               echo "value=linuxbsd" >> "$GITHUB_OUTPUT"
-              echo "extra-args=" >> "$GITHUB_OUTPUT"
+              echo "extra-args=lto=full" >> "$GITHUB_OUTPUT"
               ;;
             macOS)
               # MoltenVK is installed by brew into its own prefix-relative opt dir.
               VULKAN_PATH="$(brew --prefix molten-vk)"
               echo "value=macos" >> "$GITHUB_OUTPUT"
-              echo "extra-args=vulkan_sdk_path=${VULKAN_PATH}" >> "$GITHUB_OUTPUT"
+              echo "extra-args=vulkan_sdk_path=${VULKAN_PATH} lto=full" >> "$GITHUB_OUTPUT"
               ;;
             Windows)
               # d3d12=yes causes Godot's SCons scripts to download the D3D12
               # Agility SDK and DXC shader compiler via NuGet automatically.
               # NuGet is pre-installed on GitHub-hosted Windows runners.
               echo "value=windows" >> "$GITHUB_OUTPUT"
-              echo "extra-args=d3d12=yes" >> "$GITHUB_OUTPUT"
+              echo "extra-args=d3d12=yes lto=full" >> "$GITHUB_OUTPUT"
               ;;
           esac
 
@@ -212,7 +212,6 @@ jobs:
             platform=${{ steps.platform.outputs.value }} \
             target=template_release \
             ${{ steps.platform.outputs.extra-args }} \
-            lto=thin \
             cache_path=../.scons-cache \
             -j$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 4)
 
