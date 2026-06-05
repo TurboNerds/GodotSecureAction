@@ -7,7 +7,8 @@ on:
 
 # One encryption key is shared across all cipher/OS combinations so that a
 # single exported project works with every platform binary.
-# Store it as an encrypted Actions secret named GODOT_ENCRYPTION_KEY.
+# Required: store your 64-character hex AES key as an encrypted Actions
+# secret named GODOT_ENCRYPTION_KEY.
 
 env:
   GODOT_VERSION:        '4.6-stable'
@@ -17,41 +18,13 @@ env:
 
 jobs:
 
-  # ── Prepare: resolve the encryption key and cache the clean Godot source ─────
-  # The encryption key is resolved once here and passed to all build jobs so
-  # every cipher/OS combination is encrypted with the same key.
-  # If GODOT_ENCRYPTION_KEY is set as a repository secret that value is used;
-  # otherwise a cryptographically secure 256-bit key is generated and masked so
-  # it does not appear in plain text in the workflow logs.
+  # ── Prepare: download and cache the clean Godot source once ─────────────────
 
   prepare:
-    name: Resolve key + cache source
+    name: Cache Godot source
     runs-on: ubuntu-latest
 
-    outputs:
-      encryption-key: ${{ steps.keygen.outputs.encryption-key }}
-
     steps:
-      - name: Resolve encryption key
-        id: keygen
-        env:
-          GODOT_ENCRYPTION_KEY: ${{ secrets.GODOT_ENCRYPTION_KEY }}
-        run: |
-          if [ -n "$GODOT_ENCRYPTION_KEY" ]; then
-            KEY="$GODOT_ENCRYPTION_KEY"
-            echo "Using encryption key from GODOT_ENCRYPTION_KEY secret."
-          else
-            KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
-            echo "No secret configured — generated a new 256-bit encryption key for this run."
-          fi
-
-          # Write to GITHUB_OUTPUT before masking. ::add-mask:: redacts the
-          # value from all subsequent log lines but also from anything already
-          # in the output buffer, which would make the job output arrive empty
-          # in downstream jobs. Writing first preserves the actual value.
-          echo "encryption-key=$KEY" >> "$GITHUB_OUTPUT"
-          echo "::add-mask::$KEY"
-
       - name: Cache Godot source
         id: cache-source
         uses: actions/cache@v4
@@ -133,7 +106,7 @@ jobs:
       - name: Apply Godot Secure (${{ matrix.cipher }})
         shell: bash
         env:
-          SCRIPT_AES256_ENCRYPTION_KEY: ${{ needs.prepare.outputs.encryption-key }}
+          SCRIPT_AES256_ENCRYPTION_KEY: ${{ secrets.GODOT_ENCRYPTION_KEY }}
         run: |
           python godot_secure.py godot-source \
             --mode apply \
