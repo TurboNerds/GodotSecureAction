@@ -33,9 +33,6 @@ on:
   push:
     branches: [main]
 
-env:
-  CIPHER: aes    # aes · camellia · aria — pick one, use it everywhere
-
 jobs:
   build:
     name: ${{ matrix.os }}
@@ -46,16 +43,18 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
-      - uses: emabrey/GodotSecureAction@v1
+      - name: Build Godot Secure
+        id: godot-secure
+        uses: emabrey/GodotSecureAction@v1
         with:
           godot-version:  '4.6-stable'
-          algorithm:      ${{ env.CIPHER }}
+          algorithm:      aes              # aes · camellia · aria — pick one, use it everywhere
           encryption-key: ${{ secrets.GODOT_ENCRYPTION_KEY }}
 
       - name: Upload binaries
         uses: actions/upload-artifact@v4
         with:
-          name: godot-secure-${{ env.CIPHER }}-${{ runner.os }}
+          name: godot-secure-${{ steps.godot-secure.outputs.algorithm }}-${{ runner.os }}
           path: godot-source/bin/
 ```
 
@@ -71,7 +70,7 @@ godot-secure-aes-macOS.zip     → editor + template_debug + template_release (a
 godot-secure-aes-Windows.zip   → editor + template_debug + template_release (.exe x86_64)
 ```
 
-Run the editor on your machine to export your project. Distribute the templates for all three platforms alongside your game — they all share the same encryption key.
+Run the editor on your machine to export your project.
 
 ---
 
@@ -164,7 +163,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - uses: emabrey/GodotSecureAction@v1
+      - name: Build Godot Secure
+        id: godot-secure
+        uses: emabrey/GodotSecureAction@v1
         with:
           godot-version:  '4.6-stable'
           algorithm:      aes
@@ -173,7 +174,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: godot-secure-aes-${{ runner.os }}
+          name: godot-secure-${{ steps.godot-secure.outputs.algorithm }}-${{ runner.os }}
           path: godot-source/bin/
 ```
 
@@ -242,7 +243,9 @@ jobs:
         os:     [ubuntu-latest, macos-latest, windows-latest]
         cipher: [aes, camellia, aria]
     steps:
-      - uses: emabrey/GodotSecureAction@v1
+      - name: Build Godot Secure
+        id: godot-secure
+        uses: emabrey/GodotSecureAction@v1
         with:
           godot-version:  '4.6-stable'
           algorithm:      ${{ matrix.cipher }}
@@ -250,7 +253,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: godot-secure-${{ matrix.cipher }}-${{ runner.os }}
+          name: godot-secure-${{ steps.godot-secure.outputs.algorithm }}-${{ runner.os }}
           path: godot-source/bin/
 ```
 

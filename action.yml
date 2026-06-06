@@ -133,6 +133,10 @@ inputs:
 
 outputs:
 
+  algorithm:
+    description: The cipher algorithm used for this build (aes, camellia, or aria).
+    value: ${{ inputs.algorithm }}
+
   godot-source-path:
     description: Absolute path to the Godot source tree used for the build.
     value: ${{ steps.resolve-source.outputs.source-path }}
