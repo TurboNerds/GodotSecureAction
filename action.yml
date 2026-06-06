@@ -61,8 +61,8 @@ inputs:
 
   encryption-key:
     description: >
-      64-character hexadecimal AES-256 encryption key. Pass your GitHub secret
-      here: encryption-key: ${{ secrets.GODOT_ENCRYPTION_KEY }}.
+      64-character hexadecimal AES-256 encryption key. Store your key as a
+      repository secret and pass it to this input from the calling workflow.
       If omitted, Godot Secure generates a random key for the build (recorded
       in the log artifact) — useful for one-off test builds.
     default: ''
