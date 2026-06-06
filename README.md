@@ -21,18 +21,32 @@ Go to **Settings → Secrets and variables → Actions → New repository secret
 
 Set the same key in your Godot project under **Project → Export → Encryption → Script encryption key**.
 
-### 2. Copy the example workflow into your project repository
+### 2. Add the release workflow to your project repository
 
-Create `.github/workflows/build.yml` in your Godot project repository. A complete
-ready-to-use example is provided at [`example/build.yml`](example/build.yml) in this
-repository.
+Copy [`example/build.yml`](example/build.yml) from this repository into your Godot project at `.github/workflows/build.yml`.
 
-The workflow builds the editor and both export templates for every combination of
-OS (Linux, macOS, Windows) and cipher (AES-256, Camellia-256, ARIA-256), runs
-integration tests, and produces merged per-cipher release artifacts only when all
-tests pass.
+Push a commit — GitHub Actions builds the editor and both export templates for every combination of OS (Linux, macOS, Windows) and cipher (AES-256, Camellia-256, ARIA-256), runs integration tests, and produces three release zips only when all tests pass.
 
-### 3. Minimal single-job example
+### 3. Download and use a release zip
+
+After the workflow succeeds, download the zip for your chosen cipher from the **Actions** tab:
+
+```
+godot-4.6-stable-aes-release.zip
+  linux/     godot.linuxbsd.editor.x86_64
+             godot.linuxbsd.template_debug.x86_64
+             godot.linuxbsd.template_release.x86_64
+  macos/     Godot.app  (universal fat binary)
+             godot.macos.template_debug.universal
+             godot.macos.template_release.universal
+  windows/   godot.windows.editor.x86_64.exe
+             godot.windows.template_debug.x86_64.exe
+             godot.windows.template_release.x86_64.exe
+```
+
+Run the editor for your platform to export your project. Distribute the templates alongside your game — all three platforms are encrypted with the same key.
+
+### 4. Minimal single-job example
 
 If you only need one platform and one cipher:
 
@@ -51,52 +65,76 @@ jobs:
 
 ---
 
+## Provided workflows
+
+This repository ships two workflows. Both call `GodotSecureAction@v1` internally and run the same four integration tests before producing any release artifacts.
+
+### `release.yml` — distributable release zips
+
+**Trigger:** tag push (`v*`) or manual `workflow_dispatch` with an optional `godot-version` input.
+
+Produces one zip per cipher containing the editor and both export templates for all three operating systems. These are the files end users download to build and distribute their Godot project.
+
+| Artifact | Contents |
+|----------|----------|
+| `godot-{version}-aes-release.zip` | `linux/` `macos/` `windows/` — editor + template_debug + template_release |
+| `godot-{version}-camellia-release.zip` | same layout |
+| `godot-{version}-aria-release.zip` | same layout |
+
+To build for a specific Godot version, go to **Actions → Build and Release Godot Secure → Run workflow** and enter the version (e.g. `4.5-stable`, `master`).
+
+### `build.yml` — CI on every push to `main`
+
+**Trigger:** push to `main` or manual `workflow_dispatch`.
+
+Runs the same 9-job build matrix and integration tests to verify that the action works after every change. Also produces per-cipher packages on success, keyed to the version configured in `env.GODOT_VERSION`.
+
+---
+
 ## Inputs
 
 ### Godot source
 
 | Input | Default | Description |
 |-------|---------|-------------|
-| `godot-version` | `4.6-stable` | Godot version tag or branch to download (e.g. `4.6-stable`, `master`). The source is downloaded and cached automatically. Leave empty only if the source is already present in the workspace. |
+| `godot-version` | `4.6-stable` | Godot version tag or branch (e.g. `4.6-stable`, `master`). Downloaded and cached automatically. Leave empty only if the source is already in the workspace. |
 | `godot-repo` | `godotengine/godot` | GitHub repository to download Godot source from. |
 | `godot-source` | `godot-source` | Path where the Godot source root is, or will be downloaded to, relative to the workspace. |
-| `cache-godot-source` | `true` | Cache the downloaded Godot source between runs, keyed by `godot-repo` and `godot-version`. The cached copy is always the clean unpatched source so it is safe to share across cipher combinations and concurrent jobs. |
+| `cache-godot-source` | `true` | Cache the downloaded Godot source between runs. The cached copy is always the clean unpatched source — safe to share across cipher combinations and concurrent jobs. |
 
 ### Godot Secure patch
 
 | Input | Default | Description |
 |-------|---------|-------------|
-| `godot-secure-repo` | `emabrey/Godot-Secure` | GitHub repository to download the Godot Secure release artifact from. Leave empty to skip downloading and applying the patch. |
+| `godot-secure-repo` | `emabrey/Godot-Secure` | GitHub repository to download the Godot Secure script from. Leave empty to skip patching. |
 | `godot-secure-tag` | `v1.0.2-alpha` | Release tag to download `godot_secure.py` from. |
-| `algorithm` | `aes` | Cipher algorithm: `aes`, `camellia`, or `aria`. All three use a 256-bit key. You must use the same algorithm for every platform binary in a project distribution. See [Choosing a cipher](#choosing-a-cipher). |
-| `encryption-key` | *(empty — random)* | 64-character hex AES-256 encryption key. Pass your secret here: `encryption-key: ${{ secrets.GODOT_ENCRYPTION_KEY }}`. When omitted, Godot Secure generates a random key for the build (recorded in the log artifact). |
+| `algorithm` | `aes` | Cipher: `aes`, `camellia`, or `aria`. All three use a 256-bit key. Every platform binary in a distribution must use the same cipher. See [Choosing a cipher](#choosing-a-cipher). |
+| `encryption-key` | *(empty — random)* | 64-character hex encryption key. Pass your secret: `encryption-key: ${{ secrets.GODOT_ENCRYPTION_KEY }}`. When omitted a random key is generated and recorded in the log artifact. |
 | `advanced-kdf` | `true` | Enable the advanced key derivation function for additional key hardening. |
 
 ### Build
 
 | Input | Default | Description |
 |-------|---------|-------------|
-| `target` | `all` | Build target(s): `editor`, `template_debug`, `template_release`, or `all` (compiles all three). |
-| `platform` | *(auto)* | SCons platform name. Auto-detected from the runner OS when omitted. See [Platform auto-detection](#platform-auto-detection). |
+| `target` | `all` | Build targets: `editor`, `template_debug`, `template_release`, or `all`. |
+| `platform` | *(auto)* | SCons platform name. Auto-detected from the runner OS when omitted. |
 | `arch` | *(auto)* | Target architecture (e.g. `x86_64`, `arm64`, `universal`). Auto-detected when omitted. |
 | `precision` | `single` | Floating-point precision: `single` or `double`. |
-| `lto` | `full` | Link-time optimisation: `none` or `full`. `full` produces smaller, faster binaries at the cost of longer link time. Recommended for release distributions. |
-| `extra-scons-args` | *(empty)* | Additional SCons arguments appended verbatim to every build invocation. Example: `use_llvm=yes linker=mold`. |
+| `lto` | `full` | Link-time optimisation: `none` or `full`. `full` produces smaller, faster binaries at the cost of longer link time. |
+| `extra-scons-args` | *(empty)* | Additional SCons arguments appended to every build invocation. Example: `use_llvm=yes linker=mold`. |
 | `scons-cache` | `true` | Cache compiled SCons objects between runs. A warm cache reduces build time by 60–90 %. |
 | `scons-cache-path` | `.scons-cache` | Directory used for the SCons object cache. |
 | `python-version` | `3.x` | Python version used to run SCons and Godot Secure. |
 
 ### Platform auto-detection
 
-When `platform` is not specified the action maps the runner OS to the SCons platform name:
-
-| Runner OS | SCons platform | Extra SCons args added automatically |
-|-----------|----------------|--------------------------------------|
+| Runner OS | SCons platform | Extra SCons args injected automatically |
+|-----------|----------------|----------------------------------------|
 | Linux | `linuxbsd` | *(none)* |
 | macOS | `macos` | `vulkan_sdk_path=<molten-vk prefix>` |
 | Windows | `windows` | `d3d12=yes` |
 
-Architecture defaults are `x86_64` on Linux and Windows, and `universal` (fat binary) on macOS.
+Architecture defaults: `x86_64` on Linux and Windows, `universal` (fat binary) on macOS.
 
 ---
 
@@ -115,10 +153,6 @@ Architecture defaults are `x86_64` on Linux and Windows, and `universal` (fat bi
 ## Usage examples
 
 ### Build all targets on all platforms
-
-Run this matrix across `ubuntu-latest`, `macos-latest`, and `windows-latest` to get
-a complete set of binaries. See [`example/build.yml`](example/build.yml) for the full
-workflow including integration tests and artifact packaging.
 
 ```yaml
 jobs:
@@ -201,9 +235,9 @@ jobs:
     target:           editor
 ```
 
-### Use a pre-checked-out source tree (no auto-download)
+### Use a pre-checked-out source tree
 
-Omit `godot-version` if you have already checked out the source yourself.
+Omit `godot-version` when the source is already in the workspace.
 
 ```yaml
 - uses: actions/checkout@v4
@@ -224,43 +258,52 @@ Omit `godot-version` if you have already checked out the source yourself.
 
 ## Choosing a cipher
 
-All three ciphers use a 256-bit key and produce binaries that accept the same
-`SCRIPT_AES256_ENCRYPTION_KEY` environment variable and Godot project key setting.
-The difference is the internal cipher used to encrypt the pack file — choose the
-one that best fits your distribution requirements.
+All three ciphers use a 256-bit key and accept the same `SCRIPT_AES256_ENCRYPTION_KEY` environment variable and Godot project key setting. The difference is the internal algorithm used to encrypt the pack file — choose the one that fits your distribution requirements.
 
 | Cipher | `algorithm` value | Standard | Notes |
 |--------|-------------------|----------|-------|
-| AES-256 | `aes` | NIST FIPS 197 | Default. Widest adoption and hardware acceleration. |
+| AES-256 | `aes` | NIST FIPS 197 | Default. Widest adoption and hardware acceleration on most platforms. |
 | Camellia-256 | `camellia` | ISO/IEC 18033-3, RFC 3713 | Co-designed by NTT and Mitsubishi; approved for Japanese government use. |
 | ARIA-256 | `aria` | Korean KSDS, RFC 5794 | South Korean national standard; mandatory for Korean government systems. |
 
-Every binary in a project distribution **must use the same cipher**. A Linux build
-compiled with `algorithm: camellia` cannot read a pack file encrypted by a Windows
-build compiled with `algorithm: aes`.
+> **Every platform binary in a project distribution must use the same cipher.**
+> A Linux build compiled with `algorithm: camellia` cannot open a pack file exported with an `algorithm: aes` build.
 
 ---
 
 ## How it works
 
 1. **Sets up Python** and installs SCons via pip.
-2. **Restores the Godot source cache** (read-only). If the source is already cached, the download is skipped entirely. The cache always holds the clean unpatched source so it is safe to share across jobs that apply different ciphers.
-3. **Downloads the Godot Engine source** as a tarball from GitHub when `godot-version` is set and no cached copy exists. Release tags and branch names are both supported — the action tries the tag URL first and falls back to the branch URL automatically.
-4. **Saves the clean source cache** immediately after download, before any patching, so the cached copy is always unmodified.
-5. **Downloads `godot_secure.py`** from the specified release of `godot-secure-repo`.
-6. **Applies the Godot Secure patch** with the chosen `algorithm`. The encryption key is masked in logs and passed to the script exclusively via the `SCRIPT_AES256_ENCRYPTION_KEY` environment variable.
+2. **Restores the Godot source cache** (read-only). On a cache hit the download is skipped. The cached copy is always the clean unpatched source — safe to share across jobs that apply different ciphers.
+3. **Downloads the Godot Engine source** as a tarball from GitHub when `godot-version` is set and no cached copy exists. Tag URLs are tried first; branch URLs are used as a fallback.
+4. **Saves the clean source cache** immediately after download and before any patching.
+5. **Downloads `godot_secure.py`** from the configured release tag.
+6. **Applies the Godot Secure patch** with the chosen `algorithm`. The encryption key is masked in logs and passed exclusively via the `SCRIPT_AES256_ENCRYPTION_KEY` environment variable.
 7. **Installs system dependencies** for the runner OS:
    - **Linux** — X11, OpenGL, audio, Wayland, and input headers via `apt-get`
    - **macOS** — MoltenVK (Vulkan) and yasm via Homebrew
    - **Windows** — D3D12 Agility SDK via the Godot-bundled install script
-8. **Restores the SCons object cache** (when `scons-cache` is `true`) to reuse compiled objects from previous runs.
-9. **Runs SCons** for each requested target, parallelising across all available CPU cores, with `--implicit-cache` to skip unchanged dependency scans.
-10. **Locates the compiled binaries** under `bin/` and writes their absolute paths to the action outputs.
+8. **Restores the SCons object cache** to reuse compiled objects from previous runs (when `scons-cache` is `true`).
+9. **Runs SCons** for each requested target across all available CPU cores, with `--implicit-cache` to skip unchanged dependency scans.
+10. **Locates the compiled binaries** under `bin/` and writes their absolute paths to the step outputs.
+
+---
+
+## Integration tests
+
+Both `build.yml` and `release.yml` run four automated tests against the Linux AES build before producing any release artifacts. The package job is skipped entirely if any test fails.
+
+| # | Test | What it checks |
+|---|------|---------------|
+| 1 | Smoke test | The editor's `--version` output contains `(With Godot Secure)` |
+| 2 | Headless export | A test Godot project exports successfully in headless mode |
+| 3 | Magic header | The exported PCK does not carry the default Godot pack magic (`0x43504447`) |
+| 4 | Anti-RE | `gdsdecomp` cannot recover an embedded canary secret from the encrypted PCK |
 
 ---
 
 ## Requirements
 
 - Godot 4.x source. Tested against `4.5-stable`, `4.6-stable`, and `master`.
-- A repository secret named `GODOT_ENCRYPTION_KEY` containing a 64-character hex string. The same key must be set in your Godot project's export encryption settings.
+- A repository secret named `GODOT_ENCRYPTION_KEY` containing a 64-character hex string. The same key must be entered in your Godot project's export encryption settings.
 - All platform binaries in a project distribution must be built with the same `algorithm`.
