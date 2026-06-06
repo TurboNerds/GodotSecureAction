@@ -1,70 +1,91 @@
 name: GodotSecureAction
 
 description: >
-  GitHub Action that downloads the Godot Engine source, optionally downloads
-  and applies Godot Secure, then compiles the editor and/or export templates.
-  The Godot source download is cached by version so repeat runs skip the fetch.
+  Builds a cryptographically hardened Godot Engine from source.
+  Downloads the Godot Engine C++ source, applies the Godot Secure patch to
+  replace the default AES-256 pack encryption with a uniquely keyed build
+  using AES-256, Camellia-256, or ARIA-256, then compiles the editor and/or
+  export templates. Produced binaries are drop-in replacements for the official
+  Godot editor and export templates and work with any Godot project.
 
 inputs:
 
-  # ── Godot source ────────────────────────────────────────────────────────────
+  # ── Godot source ─────────────────────────────────────────────────────────────
 
   godot-version:
     description: >
       Godot version tag or branch to download (e.g. 4.6-stable, master).
-      When set the action downloads the source automatically and places it at
-      godot-source. Leave empty if the source is already present in the
-      workspace.
+      The source is downloaded automatically and placed at godot-source.
+      Leave empty only if the source is already present in the workspace.
     default: '4.6-stable'
 
   godot-repo:
-    description: >
-      GitHub repository to download Godot source from.
+    description: GitHub repository to download Godot source from.
     default: 'godotengine/godot'
 
   godot-source:
     description: >
       Path where the Godot C++ source root is (or will be downloaded to),
-      relative to the workspace. When godot-version is set, the source is
-      downloaded into this directory. When godot-version is empty the source
-      must already exist here.
+      relative to the workspace. When godot-version is set the source is
+      downloaded here automatically.
     default: 'godot-source'
 
   cache-godot-source:
     description: >
       Cache the downloaded Godot source between runs, keyed by godot-repo and
-      godot-version. Has no effect when godot-version is empty.
+      godot-version. The cached copy is always the clean (unpatched) source so
+      it is safe to share across cipher combinations.
     default: 'true'
 
-  # ── Godot Secure script ──────────────────────────────────────────────────────
+  # ── Godot Secure patch ────────────────────────────────────────────────────────
 
   godot-secure-repo:
     description: >
       GitHub repository to download the Godot Secure release artifact from.
-      Leave empty to skip downloading the script — use this when you have
-      already checked it out separately or do not need it.
+      Leave empty to skip downloading the script.
     default: 'emabrey/Godot-Secure'
 
   godot-secure-tag:
-    description: >
-      Release tag to download the Godot Secure artifact from.
-      Example: v1.0.2-alpha, v1.2.0.
+    description: Release tag to download the Godot Secure artifact from.
     default: 'v1.0.2-alpha'
 
+  algorithm:
+    description: >
+      Cipher algorithm for the Godot Secure patch.
+      Accepted values: aes, camellia, aria.
+      All three produce AES-256-key-compatible binaries — the key format and
+      length are the same; only the internal cipher used to encrypt the pack
+      differs. You must use the same algorithm for every platform binary in a
+      project distribution.
+    default: 'aes'
 
-  # ── Build ────────────────────────────────────────────────────────────────────
+  encryption-key:
+    description: >
+      64-character hexadecimal AES-256 encryption key. Pass your GitHub secret
+      here: encryption-key: ${{ secrets.GODOT_ENCRYPTION_KEY }}.
+      If omitted, Godot Secure generates a random key for the build (recorded
+      in the log artifact) — useful for one-off test builds.
+    default: ''
+
+  advanced-kdf:
+    description: >
+      Enable the advanced key derivation function in Godot Secure for
+      additional key hardening.
+    default: 'true'
+
+  # ── Build ─────────────────────────────────────────────────────────────────────
 
   target:
     description: >
       Build target(s) to compile.
       Accepted values: editor, template_debug, template_release, all.
       'all' compiles editor + template_debug + template_release.
-    default: 'editor'
+    default: 'all'
 
   platform:
     description: >
       Target platform. When left empty the platform is auto-detected from the
-      runner OS (linux, macos, windows). Set explicitly to cross-compile.
+      runner OS (linuxbsd, macos, windows).
     default: ''
 
   arch:
@@ -75,38 +96,42 @@ inputs:
 
   precision:
     description: >
-      Floating-point precision to build with.
+      Floating-point precision.
       Accepted values: single, double.
     default: 'single'
 
-  use-lto:
-    description: Enable link-time optimisation for release template builds.
-    default: 'false'
+  lto:
+    description: >
+      Link-time optimisation level.
+      Accepted values: none, full.
+      'full' produces smaller, faster binaries but significantly increases link
+      time. Recommended for release distributions.
+    default: 'full'
 
   extra-scons-args:
     description: >
       Additional SCons arguments appended verbatim to every scons invocation.
-      Example: "use_llvm=yes use_mingw=no"
+      Example: "use_llvm=yes linker=mold"
     default: ''
 
   scons-cache:
-    description: Cache the SCons build cache to speed up incremental builds.
-    default: 'false'
+    description: >
+      Cache compiled SCons objects between runs to speed up incremental builds.
+      Strongly recommended — a warm cache reduces build time by 60–90 %.
+    default: 'true'
 
   scons-cache-path:
     description: Path used for the SCons build cache directory.
     default: '.scons-cache'
 
   python-version:
-    description: >
-      Python version to set up for running SCons.
+    description: Python version used to run SCons and Godot Secure.
     default: '3.x'
 
 outputs:
 
   godot-source-path:
-    description: >
-      Absolute path to the Godot source tree used for the build.
+    description: Absolute path to the Godot source tree used for the build.
     value: ${{ steps.resolve-source.outputs.source-path }}
 
   godot-secure-script:
@@ -136,7 +161,7 @@ runs:
   using: 'composite'
   steps:
 
-    # ── Python + SCons ─────────────────────────────────────────────────────────
+    # ── Python + SCons ──────────────────────────────────────────────────────────
 
     - name: Set up Python
       uses: actions/setup-python@v6
@@ -147,23 +172,26 @@ runs:
       shell: bash
       run: pip install scons
 
-    # ── Godot source cache ─────────────────────────────────────────────────────
+    # ── Godot source: restore cache (read-only) ─────────────────────────────────
+    # actions/cache/restore never writes back at job end, so the cached copy
+    # always remains the clean (unpatched) source regardless of which cipher the
+    # calling job applies. The explicit save step below runs before patching.
 
-    - name: Cache Godot source
+    - name: Restore Godot source cache
       if: inputs.godot-version != '' && inputs.cache-godot-source == 'true'
-      id: cache-godot-source
-      uses: actions/cache@v5
+      id: cache-source
+      uses: actions/cache/restore@v5
       with:
         path: ${{ inputs.godot-source }}
         key: godot-source-${{ inputs.godot-repo }}-${{ inputs.godot-version }}
 
-    # ── Download Godot source ──────────────────────────────────────────────────
+    # ── Download Godot source ───────────────────────────────────────────────────
 
     - name: Download Godot source
       if: >-
         inputs.godot-version != '' &&
         (inputs.cache-godot-source != 'true' ||
-         steps.cache-godot-source.outputs.cache-hit != 'true')
+         steps.cache-source.outputs.cache-hit != 'true')
       shell: bash
       run: |
         REF="${{ inputs.godot-version }}"
@@ -172,9 +200,6 @@ runs:
 
         mkdir -p "$DEST"
 
-        # GitHub serves release tags under /refs/tags/ and branches under
-        # /refs/heads/. Try the tag URL first; fall back to a branch URL if
-        # the server returns anything other than 200.
         TAG_URL="https://github.com/${REPO}/archive/refs/tags/${REF}.tar.gz"
         STATUS=$(curl -s -o /dev/null -w "%{http_code}" -L "$TAG_URL")
 
@@ -187,12 +212,38 @@ runs:
         fi
 
         echo "Downloading Godot source from ${DOWNLOAD_URL}"
-        curl -fL "$DOWNLOAD_URL" \
-          | tar -xz --strip-components=1 -C "$DEST"
-
+        curl -fL "$DOWNLOAD_URL" | tar -xz --strip-components=1 -C "$DEST"
         echo "Godot source downloaded to ${DEST}."
 
-    # ── Resolve and expose the source path ────────────────────────────────────
+    # ── Save clean source cache (before any patching) ───────────────────────────
+    # Checks whether a concurrent job already saved the cache to avoid duplicate-
+    # save warnings, then saves the unmodified source immediately — before
+    # Godot Secure modifies any files.
+
+    - name: Check if source cache was saved by a concurrent job
+      id: cache-source-check
+      if: >-
+        inputs.godot-version != '' &&
+        inputs.cache-godot-source == 'true' &&
+        steps.cache-source.outputs.cache-hit != 'true'
+      uses: actions/cache/restore@v5
+      with:
+        path: ${{ inputs.godot-source }}
+        key: godot-source-${{ inputs.godot-repo }}-${{ inputs.godot-version }}
+        lookup-only: true
+
+    - name: Save Godot source cache
+      if: >-
+        inputs.godot-version != '' &&
+        inputs.cache-godot-source == 'true' &&
+        steps.cache-source.outputs.cache-hit != 'true' &&
+        steps.cache-source-check.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v5
+      with:
+        path: ${{ inputs.godot-source }}
+        key: godot-source-${{ inputs.godot-repo }}-${{ inputs.godot-version }}
+
+    # ── Resolve and validate the source path ────────────────────────────────────
 
     - name: Resolve Godot source path
       id: resolve-source
@@ -201,14 +252,14 @@ runs:
         SOURCE_PATH="$(pwd)/${{ inputs.godot-source }}"
         if [ ! -f "$SOURCE_PATH/SConstruct" ]; then
           echo "::error::Godot source not found at ${SOURCE_PATH}. " \
-               "Set godot-version to download it automatically, or check " \
+               "Set godot-version to download it automatically, or verify " \
                "that godot-source points to an existing source tree."
           exit 1
         fi
         echo "source-path=$SOURCE_PATH" >> "$GITHUB_OUTPUT"
         echo "Godot source root: $SOURCE_PATH"
 
-    # ── Download Godot Secure release artifact ─────────────────────────────────
+    # ── Download Godot Secure ───────────────────────────────────────────────────
 
     - name: Download Godot Secure script
       if: inputs.godot-secure-repo != ''
@@ -226,7 +277,32 @@ runs:
         echo "script-path=$SCRIPT_ABS" >> "$GITHUB_OUTPUT"
         echo "Downloaded to ${SCRIPT_ABS}."
 
-    # ── Linux system dependencies ──────────────────────────────────────────────
+    # ── Apply Godot Secure patch ────────────────────────────────────────────────
+    # Masks the key before it appears in any log line, then passes it to the
+    # script exclusively via the SCRIPT_AES256_ENCRYPTION_KEY environment
+    # variable so it is never visible in the process argument list.
+
+    - name: Apply Godot Secure (${{ inputs.algorithm }})
+      if: inputs.godot-secure-repo != ''
+      shell: bash
+      env:
+        SCRIPT_AES256_ENCRYPTION_KEY: ${{ inputs.encryption-key }}
+      run: |
+        # Mask the key so it never appears in plain text in the log.
+        if [ -n "$SCRIPT_AES256_ENCRYPTION_KEY" ]; then
+          echo "::add-mask::$SCRIPT_AES256_ENCRYPTION_KEY"
+        fi
+
+        KDF_FLAG=""
+        [ "${{ inputs.advanced-kdf }}" = "true" ] && KDF_FLAG="--advanced-kdf"
+
+        python godot_secure.py "${{ inputs.godot-source }}" \
+          --mode apply \
+          --algorithm "${{ inputs.algorithm }}" \
+          $KDF_FLAG \
+          --non-interactive
+
+    # ── Platform system dependencies ────────────────────────────────────────────
 
     - name: Install Linux build dependencies
       if: runner.os == 'Linux'
@@ -248,19 +324,25 @@ runs:
           libudev-dev \
           libdbus-1-dev \
           libfreetype-dev \
+          libwayland-dev \
+          wayland-protocols \
+          libxkbcommon-dev \
+          libdecor-0-dev \
           pkg-config \
           yasm
-
-    # ── macOS dependencies ─────────────────────────────────────────────────────
 
     - name: Install macOS build dependencies
       if: runner.os == 'macOS'
       shell: bash
-      run: |
-        # Xcode command-line tools are pre-installed on GitHub-hosted macOS runners.
-        brew install yasm || true
+      run: brew install molten-vk yasm
 
-    # ── SCons build cache ──────────────────────────────────────────────────────
+    - name: Install D3D12 SDK (Windows)
+      if: runner.os == 'Windows'
+      shell: bash
+      working-directory: ${{ inputs.godot-source }}
+      run: python misc/scripts/install_d3d12_sdk_windows.py
+
+    # ── SCons build cache ───────────────────────────────────────────────────────
 
     - name: Restore SCons cache
       if: inputs.scons-cache == 'true'
@@ -268,21 +350,22 @@ runs:
       with:
         path: ${{ inputs.scons-cache-path }}
         key: >-
-          scons-${{ inputs.godot-repo }}-${{ inputs.godot-version }}-${{
-          inputs.platform }}-${{ inputs.arch }}-${{ inputs.precision }}-${{
-          inputs.target }}-${{ runner.os }}-${{
+          scons-${{ inputs.algorithm }}-${{ inputs.godot-repo }}-${{
+          inputs.godot-version }}-${{ inputs.platform }}-${{ inputs.arch }}-${{
+          inputs.precision }}-${{ runner.os }}-${{
           hashFiles(format('{0}/version.py', inputs.godot-source)) }}
         restore-keys: |
-          scons-${{ inputs.godot-repo }}-${{ inputs.godot-version }}-${{ inputs.platform }}-${{ inputs.arch }}-${{ inputs.precision }}-${{ inputs.target }}-${{ runner.os }}-
-          scons-${{ inputs.godot-repo }}-${{ inputs.godot-version }}-${{ inputs.platform }}-${{ inputs.arch }}-${{ inputs.precision }}-${{ runner.os }}-
+          scons-${{ inputs.algorithm }}-${{ inputs.godot-repo }}-${{ inputs.godot-version }}-${{ inputs.platform }}-${{ inputs.arch }}-${{ inputs.precision }}-${{ runner.os }}-
+          scons-${{ inputs.algorithm }}-${{ inputs.godot-repo }}-${{ inputs.godot-version }}-${{ inputs.platform }}-${{ inputs.arch }}-${{ runner.os }}-
+          scons-${{ inputs.godot-repo }}-${{ inputs.godot-version }}-${{ inputs.platform }}-${{ inputs.arch }}-${{ runner.os }}-
 
-    # ── Resolve build parameters ───────────────────────────────────────────────
+    # ── Resolve build parameters ────────────────────────────────────────────────
 
-    - name: Resolve platform, arch, and targets
+    - name: Resolve platform, arch, targets, and extra args
       id: params
       shell: bash
       run: |
-        # ── Platform ──────────────────────────────────────────────────────────
+        # ── Platform ────────────────────────────────────────────────────────────
         PLATFORM="${{ inputs.platform }}"
         if [ -z "$PLATFORM" ]; then
           case "${{ runner.os }}" in
@@ -291,13 +374,12 @@ runs:
             Windows) PLATFORM="windows"  ;;
             *)
               echo "::error::Unsupported runner OS: ${{ runner.os }}"
-              exit 1
-              ;;
+              exit 1 ;;
           esac
         fi
         echo "platform=$PLATFORM" >> "$GITHUB_OUTPUT"
 
-        # ── Architecture ──────────────────────────────────────────────────────
+        # ── Architecture ─────────────────────────────────────────────────────────
         ARCH="${{ inputs.arch }}"
         if [ -z "$ARCH" ]; then
           case "${{ runner.os }}" in
@@ -308,7 +390,7 @@ runs:
         fi
         echo "arch=$ARCH" >> "$GITHUB_OUTPUT"
 
-        # ── Targets ───────────────────────────────────────────────────────────
+        # ── Targets ──────────────────────────────────────────────────────────────
         RAW_TARGET="${{ inputs.target }}"
         if [ "$RAW_TARGET" = "all" ]; then
           echo "targets=editor template_debug template_release" >> "$GITHUB_OUTPUT"
@@ -316,14 +398,33 @@ runs:
           echo "targets=$RAW_TARGET" >> "$GITHUB_OUTPUT"
         fi
 
-        # ── SCons cache arg ───────────────────────────────────────────────────
+        # ── Platform-specific SCons args ─────────────────────────────────────────
+        PLATFORM_ARGS=""
+        case "${{ runner.os }}" in
+          macOS)
+            VULKAN_PATH="$(brew --prefix molten-vk)"
+            PLATFORM_ARGS="vulkan_sdk_path=${VULKAN_PATH}"
+            ;;
+          Windows)
+            PLATFORM_ARGS="d3d12=yes"
+            ;;
+        esac
+        echo "platform-args=$PLATFORM_ARGS" >> "$GITHUB_OUTPUT"
+
+        # ── LTO ──────────────────────────────────────────────────────────────────
+        LTO_VAL="${{ inputs.lto }}"
+        [ "$LTO_VAL" = "true"  ] && LTO_VAL="full"
+        [ "$LTO_VAL" = "false" ] && LTO_VAL="none"
+        echo "lto-arg=lto=${LTO_VAL}" >> "$GITHUB_OUTPUT"
+
+        # ── Cache path arg ────────────────────────────────────────────────────────
         if [ "${{ inputs.scons-cache }}" = "true" ]; then
           echo "cache-arg=cache_path=${{ inputs.scons-cache-path }}" >> "$GITHUB_OUTPUT"
         else
           echo "cache-arg=" >> "$GITHUB_OUTPUT"
         fi
 
-    # ── Build ──────────────────────────────────────────────────────────────────
+    # ── Build ───────────────────────────────────────────────────────────────────
 
     - name: Build Godot
       shell: bash
@@ -332,31 +433,33 @@ runs:
         PLATFORM="${{ steps.params.outputs.platform }}"
         ARCH="${{ steps.params.outputs.arch }}"
         PRECISION="${{ inputs.precision }}"
-        LTO="${{ inputs.use-lto }}"
-        EXTRA="${{ inputs.extra-scons-args }}"
+        LTO_ARG="${{ steps.params.outputs.lto-arg }}"
+        PLATFORM_ARGS="${{ steps.params.outputs.platform-args }}"
         CACHE_ARG="${{ steps.params.outputs.cache-arg }}"
+        EXTRA="${{ inputs.extra-scons-args }}"
 
         ARCH_ARG=""
         [ -n "$ARCH" ] && ARCH_ARG="arch=$ARCH"
 
-        LTO_ARG="lto=none"
-        [ "$LTO" = "true" ] && LTO_ARG="lto=thin"
+        JOBS=$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 4)
 
         for TARGET in ${{ steps.params.outputs.targets }}; do
-          echo "::group::SCons — platform=$PLATFORM target=$TARGET"
+          echo "::group::SCons — platform=$PLATFORM target=$TARGET arch=$ARCH"
           scons \
             platform="$PLATFORM" \
             target="$TARGET" \
             precision="$PRECISION" \
             $ARCH_ARG \
             $LTO_ARG \
+            $PLATFORM_ARGS \
             $CACHE_ARG \
+            --implicit-cache \
             $EXTRA \
-            -j$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 2)
+            -j"$JOBS"
           echo "::endgroup::"
         done
 
-    # ── Locate compiled binaries and set outputs ───────────────────────────────
+    # ── Locate compiled binaries and expose outputs ─────────────────────────────
 
     - name: Locate compiled binaries
       id: locate-bins
@@ -367,22 +470,20 @@ runs:
         SOURCE_ABS="$(pwd)"
 
         locate_bin() {
-          local target="$1"
+          local pattern="$1"
           local result=""
           case "$PLATFORM" in
             macos)
-              result=$(find bin -type f -name "Godot*" -path "*/MacOS/Godot" 2>/dev/null \
-                | grep -i "$target" | head -n 1)
-              [ -z "$result" ] && result=$(find bin -type f -name "*.macos.*" 2>/dev/null \
-                | grep -i "$target" | head -n 1)
+              result=$(find bin -type f \( -name "*.macos.*" -o -name "Godot" \) 2>/dev/null \
+                | grep -i "$pattern" | head -n 1)
               ;;
             windows)
               result=$(find bin -type f -name "*.exe" 2>/dev/null \
-                | grep -v "console" | grep -i "$target" | head -n 1)
+                | grep -v "console" | grep -i "$pattern" | head -n 1)
               ;;
             *)
               result=$(find bin -type f -executable 2>/dev/null \
-                | grep -i "$target" | head -n 1)
+                | grep -i "$pattern" | head -n 1)
               ;;
           esac
           [ -n "$result" ] && echo "$SOURCE_ABS/$result"
@@ -394,8 +495,8 @@ runs:
 
         for TARGET in ${{ steps.params.outputs.targets }}; do
           case "$TARGET" in
-            editor)           EDITOR_PATH=$(locate_bin "editor")          ;;
-            template_debug)   DEBUG_PATH=$(locate_bin "template_debug")   ;;
+            editor)           EDITOR_PATH=$(locate_bin "editor")            ;;
+            template_debug)   DEBUG_PATH=$(locate_bin "template_debug")     ;;
             template_release) RELEASE_PATH=$(locate_bin "template_release") ;;
           esac
         done
@@ -404,8 +505,8 @@ runs:
         echo "template-debug-path=$DEBUG_PATH"     >> "$GITHUB_OUTPUT"
         echo "template-release-path=$RELEASE_PATH" >> "$GITHUB_OUTPUT"
 
-        echo "── Compiled binaries ────────────────────────────────────────"
-        [ -n "$EDITOR_PATH"  ] && echo "  editor          : $EDITOR_PATH"
-        [ -n "$DEBUG_PATH"   ] && echo "  template_debug  : $DEBUG_PATH"
-        [ -n "$RELEASE_PATH" ] && echo "  template_release: $RELEASE_PATH"
-        echo "─────────────────────────────────────────────────────────────"
+        echo "── Compiled binaries ──────────────────────────────────────────"
+        [ -n "$EDITOR_PATH"   ] && echo "  editor          : $EDITOR_PATH"
+        [ -n "$DEBUG_PATH"    ] && echo "  template_debug  : $DEBUG_PATH"
+        [ -n "$RELEASE_PATH"  ] && echo "  template_release: $RELEASE_PATH"
+        echo "───────────────────────────────────────────────────────────────"

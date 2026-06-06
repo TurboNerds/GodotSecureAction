@@ -1,0 +1,271 @@
+# .github/workflows/build.yml
+#
+# Drop this file into your Godot project repository to automatically build a
+# cryptographically hardened version of Godot Engine using GodotSecureAction.
+#
+# Prerequisites:
+#   1. Generate a 64-character hex AES-256 key, e.g.:
+#        python -c "import secrets; print(secrets.token_hex(32))"
+#   2. Add it to your repository as a secret named GODOT_ENCRYPTION_KEY:
+#        GitHub repo → Settings → Secrets and variables → Actions → New secret
+#   3. Set the same key in your Godot project:
+#        Project → Export → Encryption → Script encryption key
+#
+# The workflow builds the editor and both export templates for every combination
+# of OS (Linux, macOS, Windows) and cipher (AES-256, Camellia-256, ARIA-256),
+# producing nine platform binaries that all share the same encryption key.
+# Use the cipher that matches your project's export preset.
+#
+# Artifacts produced (after integration tests pass):
+#   godot-secure-aes/
+#     linux/    windows/    macos/
+#   godot-secure-camellia/
+#     linux/    windows/    macos/
+#   godot-secure-aria/
+#     linux/    windows/    macos/
+
+name: Build Godot Secure
+
+on:
+  # Run on every push to main so a fresh set of binaries is always available.
+  push:
+    branches: [main]
+  # Allow triggering manually from the Actions tab (e.g. after a Godot update).
+  workflow_dispatch:
+    inputs:
+      godot-version:
+        description: 'Godot version to build (tag or branch)'
+        required: false
+        default: '4.6-stable'
+
+env:
+  GODOT_VERSION: ${{ github.event.inputs.godot-version || '4.6-stable' }}
+
+jobs:
+
+  # ── Build matrix: 3 ciphers × 3 OSes = 9 parallel jobs ──────────────────────
+
+  build:
+    name: ${{ matrix.cipher }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os:     [ubuntu-latest, macos-latest, windows-latest]
+        cipher: [aes, camellia, aria]
+
+    steps:
+      - name: Build Godot Secure
+        id: godot-secure
+        uses: emabrey/GodotSecureAction@v1
+        with:
+          godot-version:  ${{ env.GODOT_VERSION }}
+          algorithm:      ${{ matrix.cipher }}
+          encryption-key: ${{ secrets.GODOT_ENCRYPTION_KEY }}
+          target:         all        # editor + template_debug + template_release
+          lto:            full       # smaller/faster binaries; slower to link
+          scons-cache:    true       # reuse compiled objects across runs
+
+      - name: Upload Godot Secure log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: log-${{ matrix.cipher }}-${{ runner.os }}
+          path: godot_secure_*.log
+          if-no-files-found: warn
+
+      - name: Upload editor
+        uses: actions/upload-artifact@v4
+        with:
+          name: editor-${{ matrix.cipher }}-${{ runner.os }}
+          path: ${{ steps.godot-secure.outputs.editor-path }}
+          if-no-files-found: error
+
+      - name: Upload debug template
+        uses: actions/upload-artifact@v4
+        with:
+          name: template-debug-${{ matrix.cipher }}-${{ runner.os }}
+          path: ${{ steps.godot-secure.outputs.template-debug-path }}
+          if-no-files-found: error
+
+      - name: Upload release template
+        uses: actions/upload-artifact@v4
+        with:
+          name: template-release-${{ matrix.cipher }}-${{ runner.os }}
+          path: ${{ steps.godot-secure.outputs.template-release-path }}
+          if-no-files-found: error
+
+      # Combined bundle used by the package job below.
+      - name: Upload bundle (all targets, this OS)
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-${{ matrix.cipher }}-${{ runner.os }}
+          path: |
+            ${{ steps.godot-secure.outputs.editor-path }}
+            ${{ steps.godot-secure.outputs.template-debug-path }}
+            ${{ steps.godot-secure.outputs.template-release-path }}
+          if-no-files-found: error
+
+  # ── Integration tests ─────────────────────────────────────────────────────────
+  # Smoke-tests the AES Linux build:
+  #   1. Editor version string contains "(With Godot Secure)"
+  #   2. A test project exports successfully under headless mode
+  #   3. The exported PCK does not carry the default Godot magic header
+  #   4. gdsdecomp cannot recover an embedded canary secret from the PCK
+  #
+  # The package job below only runs when these tests pass.
+
+  integration-test:
+    name: Integration tests
+    needs: build
+    runs-on: ubuntu-latest
+
+    env:
+      GODOT_VERSION: ${{ github.event.inputs.godot-version || '4.6-stable' }}
+      # Canary string embedded in your test project (see README for details).
+      TEST_SECRET: "replace-with-your-test-canary-string"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download AES Linux bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: bundle-aes-Linux
+          path: godot-bundle/
+
+      - name: Make binaries executable
+        run: chmod +x godot-bundle/*
+
+      - name: Locate editor binary
+        id: editor
+        run: |
+          BIN=$(find godot-bundle -type f -executable -name "*editor*" | head -1)
+          echo "path=$BIN" >> "$GITHUB_OUTPUT"
+          echo "Found editor: $BIN"
+
+      # Test 1: smoke test
+      - name: Smoke test — version string
+        run: |
+          VERSION=$("${{ steps.editor.outputs.path }}" --headless --version 2>&1 || true)
+          echo "Version output: $VERSION"
+          if echo "$VERSION" | grep -q "With Godot Secure"; then
+            echo "✓  PASS"
+          else
+            echo "✗  FAIL — version string does not contain '(With Godot Secure)'"
+            exit 1
+          fi
+
+      # Derive the template directory name from version.py so this works for
+      # tagged releases (4.6-stable → 4.6.stable) and the master branch alike.
+      - name: Resolve export template directory version
+        id: tmpl-version
+        run: |
+          curl -fsSL \
+            "https://raw.githubusercontent.com/godotengine/godot/${{ env.GODOT_VERSION }}/version.py" \
+            -o /tmp/godot_version.py
+
+          TMPL_VERSION=$(python3 - <<'EOF'
+          d = {}
+          exec(open("/tmp/godot_version.py").read(), d)
+          major  = d["major"];  minor  = d["minor"]
+          patch  = d.get("patch", 0);  status = d["status"]
+          print(f"{major}.{minor}.{status}" if patch == 0 else f"{major}.{minor}.{patch}.{status}")
+          EOF
+          )
+          echo "value=$TMPL_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Template directory: $TMPL_VERSION"
+
+      # Test 2: headless export
+      - name: Install export templates
+        run: |
+          TMPL_DIR="$HOME/.local/share/godot/export_templates/${{ steps.tmpl-version.outputs.value }}"
+          mkdir -p "$TMPL_DIR"
+          DEBUG=$(find godot-bundle -type f -executable -name "*template_debug*"   | head -1)
+          RELEASE=$(find godot-bundle -type f -executable -name "*template_release*" | head -1)
+          cp "$DEBUG"   "$TMPL_DIR/linux_debug.x86_64"
+          cp "$RELEASE" "$TMPL_DIR/linux_release.x86_64"
+          chmod +x "$TMPL_DIR"/*.x86_64
+
+      - name: Export test project
+        env:
+          SCRIPT_AES256_ENCRYPTION_KEY: ${{ secrets.GODOT_ENCRYPTION_KEY }}
+        run: |
+          mkdir -p test/project/exported
+          "${{ steps.editor.outputs.path }}" \
+            --headless \
+            --path test/project \
+            --export-release "Linux" \
+            exported/test.pck
+
+      # Test 3: magic header
+      - name: Verify PCK magic header is not default Godot magic
+        run: python3 test/scripts/check_magic_header.py test/project/exported/test.pck
+
+      # Test 4: reverse engineering resistance
+      - name: Download gdsdecomp
+        run: |
+          ASSET_URL=$(curl -fsSL https://api.github.com/repos/bruvzg/gdsdecomp/releases/latest \
+            | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          for a in data['assets']:
+              name = a['name'].lower()
+              if ('linux' in name or 'lin' in name) \
+                  and ('x86_64' in name or 'amd64' in name) \
+                  and name.endswith('.zip'):
+                  print(a['browser_download_url'])
+                  break
+          ")
+          curl -fL "$ASSET_URL" -o gdsdecomp.zip
+          unzip -q gdsdecomp.zip -d gdsdecomp/
+          find gdsdecomp/ -type f | xargs chmod +x 2>/dev/null || true
+
+      - name: Reverse engineering resistance test
+        run: |
+          python3 test/scripts/test_reverse_engineering.py \
+            --pck    test/project/exported/test.pck \
+            --tool   gdsdecomp/ \
+            --secret "${{ env.TEST_SECRET }}"
+
+  # ── Package: merge per-OS bundles into one artifact per cipher ────────────────
+  # Only runs when integration tests pass. Produces the final distributable
+  # artifacts with the editor and both templates for all three platforms.
+
+  package:
+    name: Package / ${{ matrix.cipher }}
+    needs: [build, integration-test]
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        cipher: [aes, camellia, aria]
+
+    steps:
+      - name: Download Linux bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: bundle-${{ matrix.cipher }}-Linux
+          path: release/linux/
+
+      - name: Download macOS bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: bundle-${{ matrix.cipher }}-macOS
+          path: release/macos/
+
+      - name: Download Windows bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: bundle-${{ matrix.cipher }}-Windows
+          path: release/windows/
+
+      - name: Upload release package
+        uses: actions/upload-artifact@v4
+        with:
+          name: godot-secure-${{ matrix.cipher }}
+          path: release/
+          if-no-files-found: error
