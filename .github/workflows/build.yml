@@ -306,8 +306,6 @@ jobs:
       # Canary string embedded in test/project/main.gd.
       # Must match the value of INTEGRATION_TEST_SECRET in that file.
       TEST_SECRET: "gs_secret_tk9v2x8m4p7n1q3r5w"
-      # Godot version string as used in the export template directory name.
-      GODOT_TEMPLATE_VERSION: "4.6.stable"
 
     steps:
       - name: Checkout
@@ -347,7 +345,10 @@ jobs:
 
       - name: Install export templates
         run: |
-          TMPL_DIR="$HOME/.local/share/godot/export_templates/${{ env.GODOT_TEMPLATE_VERSION }}"
+          # Godot's template directory uses dots instead of dashes in the
+          # version string (e.g. 4.6-stable → 4.6.stable, 4.5.1-rc1 → 4.5.1.rc1).
+          TMPL_VERSION=$(echo "${{ env.GODOT_VERSION }}" | tr '-' '.')
+          TMPL_DIR="$HOME/.local/share/godot/export_templates/$TMPL_VERSION"
           mkdir -p "$TMPL_DIR"
 
           DEBUG=$(find godot-bundle -type f -executable -name "*template_debug*" | head -1)
