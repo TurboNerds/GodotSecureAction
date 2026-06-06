@@ -74,8 +74,19 @@ jobs:
             | tar -xz --strip-components=1 -C godot-source
           echo "Downloaded Godot ${{ env.GODOT_VERSION }} source."
 
-      - name: Save Godot source cache
+      - name: Check if Godot source cache was saved by a concurrent job
+        id: cache-source-check
         if: steps.cache-source.outputs.cache-hit != 'true'
+        uses: actions/cache/restore@v5
+        with:
+          path: godot-source
+          key: godot-source-${{ env.GODOT_REPO }}-${{ env.GODOT_VERSION }}
+          lookup-only: true
+
+      - name: Save Godot source cache
+        if: >-
+          steps.cache-source.outputs.cache-hit != 'true' &&
+          steps.cache-source-check.outputs.cache-hit != 'true'
         uses: actions/cache/save@v5
         with:
           path: godot-source
