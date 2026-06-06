@@ -33,6 +33,9 @@ on:
   push:
     branches: [main]
 
+env:
+  CIPHER: aes    # aes · camellia · aria — pick one, use it everywhere
+
 jobs:
   build:
     name: ${{ matrix.os }}
@@ -46,13 +49,13 @@ jobs:
       - uses: emabrey/GodotSecureAction@v1
         with:
           godot-version:  '4.6-stable'
-          algorithm:      aes              # aes · camellia · aria — pick one, use it everywhere
+          algorithm:      ${{ env.CIPHER }}
           encryption-key: ${{ secrets.GODOT_ENCRYPTION_KEY }}
 
       - name: Upload binaries
         uses: actions/upload-artifact@v4
         with:
-          name: godot-secure-aes-${{ runner.os }}
+          name: godot-secure-${{ env.CIPHER }}-${{ runner.os }}
           path: godot-source/bin/
 ```
 
