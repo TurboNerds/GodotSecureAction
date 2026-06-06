@@ -411,10 +411,19 @@ runs:
         echo "lto-arg=lto=${LTO_VAL}" >> "$GITHUB_OUTPUT"
 
         # ── Cache path arg ────────────────────────────────────────────────────────
+        # Use an absolute path so SCons writes to the same directory that
+        # actions/cache watches, regardless of which working-directory the
+        # build step uses. Without this, a relative path like '.scons-cache'
+        # resolves to godot-source/.scons-cache during the build but to
+        # GITHUB_WORKSPACE/.scons-cache inside the cache action, so the cache
+        # is always saved empty and never actually restores anything.
         if [ "${{ inputs.scons-cache }}" = "true" ]; then
-          echo "cache-arg=cache_path=${{ inputs.scons-cache-path }}" >> "$GITHUB_OUTPUT"
+          CACHE_ABS="$GITHUB_WORKSPACE/${{ inputs.scons-cache-path }}"
+          echo "cache-arg=cache_path=${CACHE_ABS}" >> "$GITHUB_OUTPUT"
+          echo "cache-abs=${CACHE_ABS}" >> "$GITHUB_OUTPUT"
         else
           echo "cache-arg=" >> "$GITHUB_OUTPUT"
+          echo "cache-abs=" >> "$GITHUB_OUTPUT"
         fi
 
     # ── SCons build cache ───────────────────────────────────────────────────────
