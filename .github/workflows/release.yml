@@ -1,18 +1,44 @@
-name: Build Godot Secure
+name: Build and Release Godot Secure
 
-# CI workflow — runs on every push to main to verify that GodotSecureAction
-# works correctly across all cipher and OS combinations.
+# Builds a complete distribution of Godot Secure — editor and export templates
+# for Linux, macOS, and Windows — for every supported cipher algorithm.
 #
-# This workflow exercises the action itself. For the production release
-# workflow that produces distributable artifacts, see release.yml.
+# After the build matrix completes, integration tests verify that:
+#   1. The patched editor reports "(With Godot Secure)" in its version string.
+#   2. A test Godot project exports successfully under headless mode.
+#   3. The exported PCK does not carry the default Godot pack magic header.
+#   4. gdsdecomp cannot recover an embedded canary secret from the PCK.
+#
+# Only when all four tests pass does the package job run. It merges the
+# per-OS binaries into one release artifact per cipher:
+#
+#   godot-{version}-aes-release.zip
+#     linux/    — editor, template_debug, template_release
+#     macos/    — editor, template_debug, template_release
+#     windows/  — editor, template_debug, template_release
+#
+#   godot-{version}-camellia-release.zip  (same layout)
+#   godot-{version}-aria-release.zip      (same layout)
+#
+# A Windows developer, for example, can download godot-4.6-stable-aes-release.zip,
+# run the Windows editor to export their project, and distribute the Linux and
+# macOS templates to players — all encrypted with the same key.
 
 on:
-  workflow_dispatch:
+  # Trigger on a version tag push (e.g. v1.0.0, v2.3.1).
   push:
-    branches: [main]
+    tags:
+      - 'v*'
+  # Allow manual runs from the Actions tab with an optional version override.
+  workflow_dispatch:
+    inputs:
+      godot-version:
+        description: 'Godot Engine version (tag or branch)'
+        required: false
+        default: '4.6-stable'
 
 env:
-  GODOT_VERSION:      '4.6-stable'
+  GODOT_VERSION:      ${{ github.event.inputs.godot-version || '4.6-stable' }}
   GODOT_REPO:         'godotengine/godot'
   GODOT_SECURE_REPO:  'emabrey/Godot-Secure'
   GODOT_SECURE_TAG:   'v1.0.2-alpha'
@@ -22,7 +48,7 @@ jobs:
   # ── Build matrix: 3 ciphers × 3 OSes = 9 parallel jobs ──────────────────────
 
   build:
-    name: ${{ matrix.cipher }} / ${{ matrix.os }}
+    name: Build / ${{ matrix.cipher }} / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -54,43 +80,45 @@ jobs:
           path: godot_secure_*.log
           if-no-files-found: warn
 
+      # Individual artifacts — useful for downloading a single platform/target
+      # without fetching the full release zip.
+
       - name: Upload editor
         uses: actions/upload-artifact@v4
         with:
-          name: godot-editor-${{ matrix.cipher }}-${{ runner.os }}
+          name: editor-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-${{ runner.os }}
           path: ${{ steps.godot-secure.outputs.editor-path }}
           if-no-files-found: error
 
       - name: Upload debug template
         uses: actions/upload-artifact@v4
         with:
-          name: godot-template-debug-${{ matrix.cipher }}-${{ runner.os }}
+          name: template-debug-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-${{ runner.os }}
           path: ${{ steps.godot-secure.outputs.template-debug-path }}
           if-no-files-found: error
 
       - name: Upload release template
         uses: actions/upload-artifact@v4
         with:
-          name: godot-template-release-${{ matrix.cipher }}-${{ runner.os }}
+          name: template-release-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-${{ runner.os }}
           path: ${{ steps.godot-secure.outputs.template-release-path }}
           if-no-files-found: error
+
+      # Per-OS bundle — consumed by the package job to build the release zip.
 
       - name: Upload OS bundle
         uses: actions/upload-artifact@v4
         with:
-          name: godot-bundle-${{ matrix.cipher }}-${{ runner.os }}
+          name: bundle-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-${{ runner.os }}
           path: |
             ${{ steps.godot-secure.outputs.editor-path }}
             ${{ steps.godot-secure.outputs.template-debug-path }}
             ${{ steps.godot-secure.outputs.template-release-path }}
           if-no-files-found: error
 
-  # ── Integration tests ─────────────────────────────────────────────────────────
-  # Runs on Linux using the AES bundle. Tests:
-  #   1. Smoke test   — editor reports patched version string
-  #   2. Export test  — test project exports successfully under headless mode
-  #   3. Magic header — exported PCK does not carry the default Godot magic
-  #   4. Anti-RE test — gdsdecomp cannot recover the embedded canary secret
+  # ── Integration tests (Linux, AES) ───────────────────────────────────────────
+  # Runs four tests against the Linux AES build. The package job is blocked
+  # until all tests pass.
 
   integration-test:
     name: Integration tests
@@ -107,7 +135,7 @@ jobs:
       - name: Download AES Linux bundle
         uses: actions/download-artifact@v4
         with:
-          name: godot-bundle-aes-Linux
+          name: bundle-${{ env.GODOT_VERSION }}-aes-Linux
           path: godot-bundle/
 
       - name: Make binaries executable
@@ -120,7 +148,7 @@ jobs:
           echo "path=$BIN" >> "$GITHUB_OUTPUT"
           echo "Found editor: $BIN"
 
-      # ── Test 1: smoke test ─────────────────────────────────────────────────
+      # ── Test 1: smoke test ────────────────────────────────────────────────────
 
       - name: Smoke test — version string
         run: |
@@ -130,29 +158,44 @@ jobs:
             echo "✓  PASS — version string contains '(With Godot Secure)'"
           else
             echo "✗  FAIL — version string does not contain '(With Godot Secure)'"
-            echo "   Full output: $VERSION"
             exit 1
           fi
 
-      # ── Install export templates ───────────────────────────────────────────
+      # ── Derive template directory from version.py ─────────────────────────────
+      # Fetches version.py from the exact ref so this works for both tagged
+      # releases (4.6-stable → 4.6.stable) and the master branch.
+
+      - name: Resolve Godot template directory version
+        id: tmpl-version
+        run: |
+          curl -fsSL \
+            "https://raw.githubusercontent.com/${{ env.GODOT_REPO }}/${{ env.GODOT_VERSION }}/version.py" \
+            -o /tmp/godot_version.py
+
+          TMPL_VERSION=$(python3 - <<'EOF'
+          d = {}
+          exec(open("/tmp/godot_version.py").read(), d)
+          major  = d["major"];  minor  = d["minor"]
+          patch  = d.get("patch", 0);  status = d["status"]
+          print(f"{major}.{minor}.{status}" if patch == 0 else f"{major}.{minor}.{patch}.{status}")
+          EOF
+          )
+          echo "value=$TMPL_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Template directory version: $TMPL_VERSION"
+
+      # ── Test 2: headless export ───────────────────────────────────────────────
 
       - name: Install export templates
         run: |
-          TMPL_VERSION=$(echo "${{ env.GODOT_VERSION }}" | tr '-' '.')
-          TMPL_DIR="$HOME/.local/share/godot/export_templates/$TMPL_VERSION"
+          TMPL_DIR="$HOME/.local/share/godot/export_templates/${{ steps.tmpl-version.outputs.value }}"
           mkdir -p "$TMPL_DIR"
-
           DEBUG=$(find godot-bundle -type f -executable -name "*template_debug*"   | head -1)
           RELEASE=$(find godot-bundle -type f -executable -name "*template_release*" | head -1)
-
           cp "$DEBUG"   "$TMPL_DIR/linux_debug.x86_64"
           cp "$RELEASE" "$TMPL_DIR/linux_release.x86_64"
           chmod +x "$TMPL_DIR"/*.x86_64
-
-          echo "Installed templates:"
+          echo "Installed to: $TMPL_DIR"
           ls -lh "$TMPL_DIR/"
-
-      # ── Test 2: headless export ────────────────────────────────────────────
 
       - name: Export test project
         env:
@@ -166,12 +209,12 @@ jobs:
             exported/test.pck
           ls -lh test/project/exported/
 
-      # ── Test 3: magic header check ─────────────────────────────────────────
+      # ── Test 3: magic header ──────────────────────────────────────────────────
 
       - name: Verify PCK magic header is not default Godot magic
         run: python3 test/scripts/check_magic_header.py test/project/exported/test.pck
 
-      # ── Test 4: reverse engineering resistance ─────────────────────────────
+      # ── Test 4: reverse engineering resistance ────────────────────────────────
 
       - name: Download gdsdecomp
         run: |
@@ -181,7 +224,9 @@ jobs:
           data = json.load(sys.stdin)
           for a in data['assets']:
               name = a['name'].lower()
-              if ('linux' in name or 'lin' in name) and ('x86_64' in name or 'amd64' in name) and name.endswith('.zip'):
+              if ('linux' in name or 'lin' in name) \
+                  and ('x86_64' in name or 'amd64' in name) \
+                  and name.endswith('.zip'):
                   print(a['browser_download_url'])
                   break
           ")
@@ -189,8 +234,6 @@ jobs:
           curl -fL "$ASSET_URL" -o gdsdecomp.zip
           unzip -q gdsdecomp.zip -d gdsdecomp/
           find gdsdecomp/ -type f | xargs chmod +x 2>/dev/null || true
-          echo "gdsdecomp contents:"
-          find gdsdecomp/ -type f
 
       - name: Reverse engineering resistance test
         run: |
@@ -199,8 +242,16 @@ jobs:
             --tool   gdsdecomp/ \
             --secret "${{ env.TEST_SECRET }}"
 
-  # ── Package: merge per-OS bundles into one artifact per cipher ────────────────
-  # Only runs when integration tests pass.
+  # ── Release packaging ─────────────────────────────────────────────────────────
+  # Blocked until integration tests pass. Merges the three OS bundles for each
+  # cipher into one zip so a developer can download a single file and have
+  # everything needed to export a Godot project on any platform.
+  #
+  # Final artifact layout (one zip per cipher):
+  #   godot-{version}-{cipher}-release.zip
+  #     linux/    — editor, template_debug, template_release (ELF x86_64)
+  #     macos/    — editor, template_debug, template_release (universal .app)
+  #     windows/  — editor, template_debug, template_release (.exe x86_64)
 
   package:
     name: Package / ${{ matrix.cipher }}
@@ -216,24 +267,27 @@ jobs:
       - name: Download Linux bundle
         uses: actions/download-artifact@v4
         with:
-          name: godot-bundle-${{ matrix.cipher }}-Linux
+          name: bundle-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-Linux
           path: release/linux/
 
       - name: Download macOS bundle
         uses: actions/download-artifact@v4
         with:
-          name: godot-bundle-${{ matrix.cipher }}-macOS
+          name: bundle-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-macOS
           path: release/macos/
 
       - name: Download Windows bundle
         uses: actions/download-artifact@v4
         with:
-          name: godot-bundle-${{ matrix.cipher }}-Windows
+          name: bundle-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-Windows
           path: release/windows/
 
-      - name: Upload release package
+      - name: List release contents
+        run: find release/ -type f | sort
+
+      - name: Upload release zip
         uses: actions/upload-artifact@v4
         with:
-          name: godot-secure-${{ matrix.cipher }}
+          name: godot-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-release
           path: release/
           if-no-files-found: error
