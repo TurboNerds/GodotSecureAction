@@ -1,0 +1,10 @@
+; Engine configuration file.
+; Generated for GodotSecureAction integration tests.
+
+config_version=5
+
+[application]
+
+config/name="GodotSecureIntegrationTest"
+config/features=PackedStringArray("4.6", "Forward Plus")
+config/main_scene="res://main.tscn"

@@ -289,3 +289,122 @@ jobs:
             godot-source/bin/*template_debug*
             godot-source/bin/*template_release*
           if-no-files-found: error
+
+  # ── Integration tests ────────────────────────────────────────────────────────
+  # Runs on Linux using the AES bundle. Tests:
+  #   1. Smoke test   — editor reports patched version string
+  #   2. Export test  — test project exports successfully under headless mode
+  #   3. Magic header — exported PCK does not carry the default Godot magic
+  #   4. Anti-RE test — gdsdecomp cannot recover the embedded canary secret
+
+  integration-test:
+    name: Integration tests
+    needs: build
+    runs-on: ubuntu-latest
+
+    env:
+      # Canary string embedded in test/project/main.gd.
+      # Must match the value of INTEGRATION_TEST_SECRET in that file.
+      TEST_SECRET: "gs_secret_tk9v2x8m4p7n1q3r5w"
+      # Godot version string as used in the export template directory name.
+      GODOT_TEMPLATE_VERSION: "4.6.stable"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download AES Linux bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: godot-bundle-aes-Linux
+          path: godot-bundle/
+
+      - name: Make binaries executable
+        run: chmod +x godot-bundle/*
+
+      - name: Locate editor binary
+        id: editor
+        run: |
+          BIN=$(find godot-bundle -type f -executable -name "*editor*" | head -1)
+          echo "path=$BIN" >> "$GITHUB_OUTPUT"
+          echo "Found editor: $BIN"
+
+      # ── Test 1: smoke test ─────────────────────────────────────────────────
+
+      - name: Smoke test — version string
+        run: |
+          VERSION=$("${{ steps.editor.outputs.path }}" --headless --version 2>&1 || true)
+          echo "Version output: $VERSION"
+          if echo "$VERSION" | grep -q "With Godot Secure"; then
+            echo "✓  PASS — version string contains '(With Godot Secure)'"
+          else
+            echo "✗  FAIL — version string does not contain '(With Godot Secure)'"
+            echo "   Full output: $VERSION"
+            exit 1
+          fi
+
+      # ── Install export templates ───────────────────────────────────────────
+
+      - name: Install export templates
+        run: |
+          TMPL_DIR="$HOME/.local/share/godot/export_templates/${{ env.GODOT_TEMPLATE_VERSION }}"
+          mkdir -p "$TMPL_DIR"
+
+          DEBUG=$(find godot-bundle -type f -executable -name "*template_debug*" | head -1)
+          RELEASE=$(find godot-bundle -type f -executable -name "*template_release*" | head -1)
+
+          cp "$DEBUG"   "$TMPL_DIR/linux_debug.x86_64"
+          cp "$RELEASE" "$TMPL_DIR/linux_release.x86_64"
+          chmod +x "$TMPL_DIR"/*.x86_64
+
+          echo "Installed templates:"
+          ls -lh "$TMPL_DIR/"
+
+      # ── Test 2: headless export ────────────────────────────────────────────
+
+      - name: Export test project
+        env:
+          SCRIPT_AES256_ENCRYPTION_KEY: ${{ secrets.GODOT_ENCRYPTION_KEY }}
+        run: |
+          mkdir -p test/project/exported
+          "${{ steps.editor.outputs.path }}" \
+            --headless \
+            --path test/project \
+            --export-release "Linux" \
+            exported/test.pck
+          ls -lh test/project/exported/
+
+      # ── Test 3: magic header check ─────────────────────────────────────────
+
+      - name: Verify PCK magic header is not default Godot magic
+        run: python3 test/scripts/check_magic_header.py test/project/exported/test.pck
+
+      # ── Download gdsdecomp ─────────────────────────────────────────────────
+
+      - name: Download gdsdecomp
+        run: |
+          ASSET_URL=$(curl -fsSL https://api.github.com/repos/bruvzg/gdsdecomp/releases/latest \
+            | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          for a in data['assets']:
+              name = a['name'].lower()
+              if ('linux' in name or 'lin' in name) and ('x86_64' in name or 'amd64' in name) and name.endswith('.zip'):
+                  print(a['browser_download_url'])
+                  break
+          ")
+          echo "Downloading gdsdecomp from: $ASSET_URL"
+          curl -fL "$ASSET_URL" -o gdsdecomp.zip
+          unzip -q gdsdecomp.zip -d gdsdecomp/
+          find gdsdecomp/ -type f | xargs chmod +x 2>/dev/null || true
+          echo "gdsdecomp contents:"
+          find gdsdecomp/ -type f
+
+      # ── Test 4: reverse engineering resistance ─────────────────────────────
+
+      - name: Reverse engineering resistance test
+        run: |
+          python3 test/scripts/test_reverse_engineering.py \
+            --pck    test/project/exported/test.pck \
+            --tool   gdsdecomp/ \
+            --secret "${{ env.TEST_SECRET }}"
