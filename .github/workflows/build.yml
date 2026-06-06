@@ -265,3 +265,13 @@ jobs:
           name: godot-template-release-${{ matrix.cipher }}-${{ runner.os }}
           path: godot-source/bin/*template_release*
           if-no-files-found: error
+
+      - name: Upload combined bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: godot-bundle-${{ matrix.cipher }}-${{ runner.os }}
+          path: |
+            godot-source/bin/*editor*
+            godot-source/bin/*template_debug*
+            godot-source/bin/*template_release*
+          if-no-files-found: error
