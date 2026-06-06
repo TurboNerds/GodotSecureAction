@@ -245,6 +245,52 @@ jobs:
             godot-source/bin/*template_release*
           if-no-files-found: error
 
+  # ── Final packaging: one artifact per version+cipher containing all three OSes
+  # Same layout as the main build workflow, but scoped per Godot version so that
+  # artifacts from different compatibility runs are kept separate.
+  # Artifact layout:
+  #   godot-secure-{version}-{cipher}/
+  #     linux/   — editor + template_debug + template_release
+  #     macos/   — editor + template_debug + template_release
+  #     windows/ — editor + template_debug + template_release
+
+  package:
+    name: Package / ${{ matrix.godot-version }} / ${{ matrix.cipher }}
+    needs: [build, integration-test]
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        godot-version: ['master', '4.6-stable', '4.5-stable']
+        cipher:        [aes, camellia, aria]
+
+    steps:
+      - name: Download Linux bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: bundle-${{ matrix.godot-version }}-${{ matrix.cipher }}-Linux
+          path: release/linux/
+
+      - name: Download macOS bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: bundle-${{ matrix.godot-version }}-${{ matrix.cipher }}-macOS
+          path: release/macos/
+
+      - name: Download Windows bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: bundle-${{ matrix.godot-version }}-${{ matrix.cipher }}-Windows
+          path: release/windows/
+
+      - name: Upload release package
+        uses: actions/upload-artifact@v7
+        with:
+          name: godot-secure-${{ matrix.godot-version }}-${{ matrix.cipher }}
+          path: release/
+          if-no-files-found: error
+
   # ── Integration tests: one job per Godot version (Linux, AES) ────────────────
   # Runs the same four tests as the main build workflow. The template directory
   # name is derived by fetching version.py from GitHub for the specific ref so

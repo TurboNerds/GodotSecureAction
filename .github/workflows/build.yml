@@ -290,6 +290,51 @@ jobs:
             godot-source/bin/*template_release*
           if-no-files-found: error
 
+  # ── Final packaging: one artifact per cipher containing all three OSes ───────
+  # Downloads the per-OS bundles produced by the build matrix and merges them
+  # into a single artifact so consumers don't have to fetch nine separate zips.
+  # Artifact layout:
+  #   godot-secure-{cipher}/
+  #     linux/   — editor + template_debug + template_release
+  #     macos/   — editor + template_debug + template_release
+  #     windows/ — editor + template_debug + template_release
+
+  package:
+    name: Package / ${{ matrix.cipher }}
+    needs: [build, integration-test]
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        cipher: [aes, camellia, aria]
+
+    steps:
+      - name: Download Linux bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: godot-bundle-${{ matrix.cipher }}-Linux
+          path: release/linux/
+
+      - name: Download macOS bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: godot-bundle-${{ matrix.cipher }}-macOS
+          path: release/macos/
+
+      - name: Download Windows bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: godot-bundle-${{ matrix.cipher }}-Windows
+          path: release/windows/
+
+      - name: Upload release package
+        uses: actions/upload-artifact@v7
+        with:
+          name: godot-secure-${{ matrix.cipher }}
+          path: release/
+          if-no-files-found: error
+
   # ── Integration tests ────────────────────────────────────────────────────────
   # Runs on Linux using the AES bundle. Tests:
   #   1. Smoke test   — editor reports patched version string
