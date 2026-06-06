@@ -175,10 +175,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: godot-${{ matrix.cipher }}-${{ runner.os }}
-          path: |
-            ${{ steps.godot-secure.outputs.editor-path }}
-            ${{ steps.godot-secure.outputs.template-debug-path }}
-            ${{ steps.godot-secure.outputs.template-release-path }}
+          path: godot-source/bin/
 ```
 
 ### Use the output paths in a downstream step

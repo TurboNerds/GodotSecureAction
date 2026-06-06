@@ -57,31 +57,28 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: godot-editor-${{ matrix.cipher }}-${{ runner.os }}
-          path: ${{ steps.godot-secure.outputs.editor-path }}
+          path: godot-source/bin/*editor*
           if-no-files-found: error
 
       - name: Upload debug template
         uses: actions/upload-artifact@v4
         with:
           name: godot-template-debug-${{ matrix.cipher }}-${{ runner.os }}
-          path: ${{ steps.godot-secure.outputs.template-debug-path }}
+          path: godot-source/bin/*template_debug*
           if-no-files-found: error
 
       - name: Upload release template
         uses: actions/upload-artifact@v4
         with:
           name: godot-template-release-${{ matrix.cipher }}-${{ runner.os }}
-          path: ${{ steps.godot-secure.outputs.template-release-path }}
+          path: godot-source/bin/*template_release*
           if-no-files-found: error
 
       - name: Upload OS bundle
         uses: actions/upload-artifact@v4
         with:
           name: godot-bundle-${{ matrix.cipher }}-${{ runner.os }}
-          path: |
-            ${{ steps.godot-secure.outputs.editor-path }}
-            ${{ steps.godot-secure.outputs.template-debug-path }}
-            ${{ steps.godot-secure.outputs.template-release-path }}
+          path: godot-source/bin/
           if-no-files-found: error
 
   # ── Integration tests ─────────────────────────────────────────────────────────
