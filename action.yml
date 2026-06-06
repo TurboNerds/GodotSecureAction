@@ -252,7 +252,9 @@ runs:
       id: resolve-source
       shell: bash
       run: |
-        SOURCE_PATH="$(pwd)/${{ inputs.godot-source }}"
+        # Use GITHUB_WORKSPACE explicitly rather than $(pwd) so the path is
+        # always an absolute OS-native path regardless of working-directory.
+        SOURCE_PATH="$GITHUB_WORKSPACE/${{ inputs.godot-source }}"
         if [ ! -f "$SOURCE_PATH/SConstruct" ]; then
           echo "::error::Godot source not found at ${SOURCE_PATH}. " \
                "Set godot-version to download it automatically, or verify " \
@@ -274,9 +276,9 @@ runs:
         URL="https://github.com/${REPO}/releases/download/${TAG}/godot_secure.py"
 
         echo "Downloading godot_secure.py from ${URL}"
-        curl -fL "$URL" -o godot_secure.py
+        curl -fL "$URL" -o "$GITHUB_WORKSPACE/godot_secure.py"
 
-        SCRIPT_ABS="$(pwd)/godot_secure.py"
+        SCRIPT_ABS="$GITHUB_WORKSPACE/godot_secure.py"
         echo "script-path=$SCRIPT_ABS" >> "$GITHUB_OUTPUT"
         echo "Downloaded to ${SCRIPT_ABS}."
 
@@ -299,7 +301,7 @@ runs:
         KDF_FLAG=""
         [ "${{ inputs.advanced-kdf }}" = "true" ] && KDF_FLAG="--advanced-kdf"
 
-        python godot_secure.py "${{ inputs.godot-source }}" \
+        python "$GITHUB_WORKSPACE/godot_secure.py" "$GITHUB_WORKSPACE/${{ inputs.godot-source }}" \
           --mode apply \
           --algorithm "${{ inputs.algorithm }}" \
           $KDF_FLAG \
@@ -434,7 +436,9 @@ runs:
       if: inputs.scons-cache == 'true'
       uses: actions/cache@v5
       with:
-        path: ${{ inputs.scons-cache-path }}
+        path: |
+          ${{ inputs.scons-cache-path }}
+          ${{ inputs.godot-source }}/.sconsign.dblite
         key: >-
           scons-${{ inputs.algorithm }}-${{ inputs.godot-repo }}-${{
           inputs.godot-version }}-${{ steps.params.outputs.platform }}-${{
@@ -485,29 +489,28 @@ runs:
     - name: Locate compiled binaries
       id: locate-bins
       shell: bash
-      working-directory: ${{ inputs.godot-source }}
       run: |
         PLATFORM="${{ steps.params.outputs.platform }}"
-        SOURCE_ABS="$(pwd)"
+        BIN_DIR="$GITHUB_WORKSPACE/${{ inputs.godot-source }}/bin"
 
         locate_bin() {
           local pattern="$1"
           local result=""
           case "$PLATFORM" in
             macos)
-              result=$(find bin -type f \( -name "*.macos.*" -o -name "Godot" \) 2>/dev/null \
+              result=$(find "$BIN_DIR" -type f \( -name "*.macos.*" -o -name "Godot" \) 2>/dev/null \
                 | grep -i "$pattern" | head -n 1)
               ;;
             windows)
-              result=$(find bin -type f -name "*.exe" 2>/dev/null \
+              result=$(find "$BIN_DIR" -type f -name "*.exe" 2>/dev/null \
                 | grep -v "console" | grep -i "$pattern" | head -n 1)
               ;;
             *)
-              result=$(find bin -type f -executable 2>/dev/null \
+              result=$(find "$BIN_DIR" -type f -executable 2>/dev/null \
                 | grep -i "$pattern" | head -n 1)
               ;;
           esac
-          [ -n "$result" ] && echo "$SOURCE_ABS/$result"
+          echo "$result"
         }
 
         EDITOR_PATH=""
