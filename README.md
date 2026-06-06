@@ -21,73 +21,68 @@ Go to **Settings → Secrets and variables → Actions → New repository secret
 
 Set the same key in your Godot project under **Project → Export → Encryption → Script encryption key**.
 
-### 2. Add the release workflow to your project repository
+### 2. Create the build workflow
 
-Copy [`example/build.yml`](example/build.yml) from this repository into your Godot project at `.github/workflows/build.yml`.
-
-Push a commit — GitHub Actions builds the editor and both export templates for every combination of OS (Linux, macOS, Windows) and cipher (AES-256, Camellia-256, ARIA-256), runs integration tests, and produces three release zips only when all tests pass.
-
-### 3. Download and use a release zip
-
-After the workflow succeeds, download the zip for your chosen cipher from the **Actions** tab:
-
-```
-godot-4.6-stable-aes-release.zip
-  linux/     godot.linuxbsd.editor.x86_64
-             godot.linuxbsd.template_debug.x86_64
-             godot.linuxbsd.template_release.x86_64
-  macos/     Godot.app  (universal fat binary)
-             godot.macos.template_debug.universal
-             godot.macos.template_release.universal
-  windows/   godot.windows.editor.x86_64.exe
-             godot.windows.template_debug.x86_64.exe
-             godot.windows.template_release.x86_64.exe
-```
-
-Run the editor for your platform to export your project. Distribute the templates alongside your game — all three platforms are encrypted with the same key.
-
-### 4. Minimal single-job example
-
-If you only need one platform and one cipher:
+Create `.github/workflows/build.yml` in your Godot project repository:
 
 ```yaml
+name: Build Godot Secure
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
 jobs:
   build:
-    runs-on: ubuntu-latest
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
     steps:
       - uses: emabrey/GodotSecureAction@v1
         with:
           godot-version:  '4.6-stable'
-          algorithm:      aes
+          algorithm:      aes              # aes · camellia · aria — pick one, use it everywhere
           encryption-key: ${{ secrets.GODOT_ENCRYPTION_KEY }}
-          target:         all
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: godot-secure-aes-${{ runner.os }}
+          path: godot-source/bin/
 ```
+
+Push a commit. The workflow builds the editor and both export templates for Linux, macOS, and Windows in parallel. When all three jobs finish, download the artifact for your platform and use the editor to export your project.
+
+### 3. Pick up your binaries
+
+After the workflow succeeds, go to **Actions → your run → Artifacts** and download the zip for your OS:
+
+```
+godot-secure-aes-Linux.zip     → editor + template_debug + template_release (ELF x86_64)
+godot-secure-aes-macOS.zip     → editor + template_debug + template_release (arm64)
+godot-secure-aes-Windows.zip   → editor + template_debug + template_release (.exe x86_64)
+```
+
+Run the editor on your machine to export your project. Distribute the templates for all three platforms alongside your game — they all share the same encryption key.
 
 ---
 
-## Provided workflows
+## Choosing a cipher
 
-This repository ships two workflows. Both call `GodotSecureAction@v1` internally and run the same four integration tests before producing any release artifacts.
+Pick one algorithm and use it for **every** OS build. A pack file exported with an AES editor cannot be opened by a Camellia template.
 
-### `release.yml` — distributable release zips
+| Cipher | `algorithm` value | Standard | Notes |
+|--------|-------------------|----------|-------|
+| AES-256 | `aes` | NIST FIPS 197 | Default. Widest adoption; hardware acceleration on most platforms. |
+| Camellia-256 | `camellia` | ISO/IEC 18033-3, RFC 3713 | Co-designed by NTT and Mitsubishi; approved for Japanese government use. |
+| ARIA-256 | `aria` | Korean KSDS, RFC 5794 | South Korean national standard; mandatory for Korean government systems. |
 
-**Trigger:** tag push (`v*`) or manual `workflow_dispatch` with an optional `godot-version` input.
-
-Produces one zip per cipher containing the editor and both export templates for all three operating systems. These are the files end users download to build and distribute their Godot project.
-
-| Artifact | Contents |
-|----------|----------|
-| `godot-{version}-aes-release.zip` | `linux/` `macos/` `windows/` — editor + template_debug + template_release |
-| `godot-{version}-camellia-release.zip` | same layout |
-| `godot-{version}-aria-release.zip` | same layout |
-
-To build for a specific Godot version, go to **Actions → Build and Release Godot Secure → Run workflow** and enter the version (e.g. `4.5-stable`, `master`).
-
-### `build.yml` — CI on every push to `main`
-
-**Trigger:** push to `main` or manual `workflow_dispatch`.
-
-Runs the same 9-job build matrix and integration tests to verify that the action works after every change. Also produces per-cipher packages on success, keyed to the version configured in `env.GODOT_VERSION`.
+All three use a 256-bit key and accept the same `SCRIPT_AES256_ENCRYPTION_KEY` environment variable and Godot project key setting.
 
 ---
 
@@ -108,8 +103,8 @@ Runs the same 9-job build matrix and integration tests to verify that the action
 |-------|---------|-------------|
 | `godot-secure-repo` | `emabrey/Godot-Secure` | GitHub repository to download the Godot Secure script from. Leave empty to skip patching. |
 | `godot-secure-tag` | `v1.0.2-alpha` | Release tag to download `godot_secure.py` from. |
-| `algorithm` | `aes` | Cipher: `aes`, `camellia`, or `aria`. All three use a 256-bit key. Every platform binary in a distribution must use the same cipher. See [Choosing a cipher](#choosing-a-cipher). |
-| `encryption-key` | *(empty — random)* | 64-character hex encryption key. Pass your secret: `encryption-key: ${{ secrets.GODOT_ENCRYPTION_KEY }}`. When omitted a random key is generated and recorded in the log artifact. |
+| `algorithm` | `aes` | Cipher: `aes`, `camellia`, or `aria`. Every platform binary in a distribution must use the same cipher. |
+| `encryption-key` | *(empty — random)* | 64-character hex encryption key. Pass your repository secret here. When omitted a random key is generated and recorded in the log artifact. |
 | `advanced-kdf` | `true` | Enable the advanced key derivation function for additional key hardening. |
 
 ### Build
@@ -118,9 +113,9 @@ Runs the same 9-job build matrix and integration tests to verify that the action
 |-------|---------|-------------|
 | `target` | `all` | Build targets: `editor`, `template_debug`, `template_release`, or `all`. |
 | `platform` | *(auto)* | SCons platform name. Auto-detected from the runner OS when omitted. |
-| `arch` | *(auto)* | Target architecture (e.g. `x86_64`, `arm64`, `universal`). Auto-detected when omitted. |
+| `arch` | *(auto)* | Target architecture (e.g. `x86_64`, `arm64`). Auto-detected when omitted. |
 | `precision` | `single` | Floating-point precision: `single` or `double`. |
-| `lto` | `full` | Link-time optimisation: `none` or `full`. `full` produces smaller, faster binaries at the cost of longer link time. |
+| `lto` | `auto` | Link-time optimisation: `none`, `auto`, or `full`. `auto` skips LTO on editor/debug builds and enables thin LTO on release templates — the best default for most workflows. Use `full` when building release distributions. |
 | `extra-scons-args` | *(empty)* | Additional SCons arguments appended to every build invocation. Example: `use_llvm=yes linker=mold`. |
 | `scons-cache` | `true` | Cache compiled SCons objects between runs. A warm cache reduces build time by 60–90 %. |
 | `scons-cache-path` | `.scons-cache` | Directory used for the SCons object cache. |
@@ -134,7 +129,7 @@ Runs the same 9-job build matrix and integration tests to verify that the action
 | macOS | `macos` | `vulkan_sdk_path=<molten-vk prefix>` |
 | Windows | `windows` | `d3d12=yes` |
 
-Architecture defaults: `x86_64` on Linux and Windows, `universal` (fat binary) on macOS.
+Architecture defaults: `x86_64` on Linux and Windows, auto-detected on macOS (arm64 on Apple Silicon runners).
 
 ---
 
@@ -150,35 +145,36 @@ Architecture defaults: `x86_64` on Linux and Windows, `universal` (fat binary) o
 
 ---
 
-## Usage examples
+## More examples
 
-### Build all targets on all platforms
+### Trigger on a release tag and produce fully optimised binaries
 
 ```yaml
+on:
+  push:
+    tags: ['v*']
+
 jobs:
   build:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os:     [ubuntu-latest, macos-latest, windows-latest]
-        cipher: [aes, camellia, aria]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - name: Build Godot Secure
-        id: godot-secure
-        uses: emabrey/GodotSecureAction@v1
+      - uses: emabrey/GodotSecureAction@v1
         with:
           godot-version:  '4.6-stable'
-          algorithm:      ${{ matrix.cipher }}
+          algorithm:      aes
           encryption-key: ${{ secrets.GODOT_ENCRYPTION_KEY }}
-          target:         all
+          lto:            full          # maximum optimisation for a release build
 
       - uses: actions/upload-artifact@v4
         with:
-          name: godot-${{ matrix.cipher }}-${{ runner.os }}
+          name: godot-secure-aes-${{ runner.os }}
           path: godot-source/bin/
 ```
 
-### Use the output paths in a downstream step
+### Run the editor in a downstream step
 
 ```yaml
 - name: Build Godot Secure
@@ -190,7 +186,7 @@ jobs:
     encryption-key: ${{ secrets.GODOT_ENCRYPTION_KEY }}
     target:         editor
 
-- name: Smoke test
+- name: Headless version check
   run: |
     "${{ steps.build.outputs.editor-path }}" --headless --version
 ```
@@ -204,7 +200,6 @@ jobs:
     godot-secure-tag: 'v1.2.0'
     algorithm:        camellia
     encryption-key:   ${{ secrets.GODOT_ENCRYPTION_KEY }}
-    target:           all
 ```
 
 ### Use a fork of Godot Secure
@@ -217,7 +212,6 @@ jobs:
     godot-secure-tag:  'v2.0.0'
     algorithm:         aes
     encryption-key:    ${{ secrets.GODOT_ENCRYPTION_KEY }}
-    target:            all
 ```
 
 ### Pass custom SCons arguments
@@ -232,39 +226,50 @@ jobs:
     target:           editor
 ```
 
-### Use a pre-checked-out source tree
+### Build all three ciphers at once
 
-Omit `godot-version` when the source is already in the workspace.
+Only needed when you want to support multiple cipher options for different distribution contexts (e.g. one build for general users and one for a regulatory region).
 
 ```yaml
-- uses: actions/checkout@v4
-  with:
-    repository: godotengine/godot
-    ref:        '4.6-stable'
-    path:       godot-source
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os:     [ubuntu-latest, macos-latest, windows-latest]
+        cipher: [aes, camellia, aria]
+    steps:
+      - uses: emabrey/GodotSecureAction@v1
+        with:
+          godot-version:  '4.6-stable'
+          algorithm:      ${{ matrix.cipher }}
+          encryption-key: ${{ secrets.GODOT_ENCRYPTION_KEY }}
 
-- uses: emabrey/GodotSecureAction@v1
-  with:
-    godot-source:   godot-source
-    algorithm:      aes
-    encryption-key: ${{ secrets.GODOT_ENCRYPTION_KEY }}
-    target:         all
+      - uses: actions/upload-artifact@v4
+        with:
+          name: godot-secure-${{ matrix.cipher }}-${{ runner.os }}
+          path: godot-source/bin/
 ```
 
 ---
 
-## Choosing a cipher
+## Provided workflows
 
-All three ciphers use a 256-bit key and accept the same `SCRIPT_AES256_ENCRYPTION_KEY` environment variable and Godot project key setting. The difference is the internal algorithm used to encrypt the pack file — choose the one that fits your distribution requirements.
+This repository ships two workflows used for developing and releasing GodotSecureAction itself. They are not needed for typical project use — the quick start workflow above is all most projects need.
 
-| Cipher | `algorithm` value | Standard | Notes |
-|--------|-------------------|----------|-------|
-| AES-256 | `aes` | NIST FIPS 197 | Default. Widest adoption and hardware acceleration on most platforms. |
-| Camellia-256 | `camellia` | ISO/IEC 18033-3, RFC 3713 | Co-designed by NTT and Mitsubishi; approved for Japanese government use. |
-| ARIA-256 | `aria` | Korean KSDS, RFC 5794 | South Korean national standard; mandatory for Korean government systems. |
+### `build.yml` — CI on every push to `main`
 
-> **Every platform binary in a project distribution must use the same cipher.**
-> A Linux build compiled with `algorithm: camellia` cannot open a pack file exported with an `algorithm: aes` build.
+Verifies the action works across all cipher and OS combinations after every change. Runs the full 9-job build matrix (3 ciphers × 3 OSes) and four integration tests before producing any artifacts.
+
+### `release.yml` — distributable release zips
+
+Triggered by a tag push (`v*`) or manually from the Actions tab. Produces one zip per cipher containing the editor and both export templates for all three platforms.
+
+| Artifact | Contents |
+|----------|----------|
+| `godot-{version}-aes-release.zip` | `linux/` `macos/` `windows/` — editor + template_debug + template_release |
+| `godot-{version}-camellia-release.zip` | same layout |
+| `godot-{version}-aria-release.zip` | same layout |
 
 ---
 
@@ -281,21 +286,8 @@ All three ciphers use a 256-bit key and accept the same `SCRIPT_AES256_ENCRYPTIO
    - **macOS** — MoltenVK (Vulkan) and yasm via Homebrew
    - **Windows** — D3D12 Agility SDK via the Godot-bundled install script
 8. **Restores the SCons object cache** to reuse compiled objects from previous runs (when `scons-cache` is `true`).
-9. **Runs SCons** for each requested target across all available CPU cores, with `--implicit-cache` to skip unchanged dependency scans.
+9. **Runs SCons** for each requested target across all available CPU cores, with `--implicit-cache` to skip unchanged dependency scans across runs.
 10. **Locates the compiled binaries** under `bin/` and writes their absolute paths to the step outputs.
-
----
-
-## Integration tests
-
-Both `build.yml` and `release.yml` run four automated tests against the Linux AES build before producing any release artifacts. The package job is skipped entirely if any test fails.
-
-| # | Test | What it checks |
-|---|------|---------------|
-| 1 | Smoke test | The editor's `--version` output contains `(With Godot Secure)` |
-| 2 | Headless export | A test Godot project exports successfully in headless mode |
-| 3 | Magic header | The exported PCK does not carry the default Godot pack magic (`0x43504447`) |
-| 4 | Anti-RE | `gdsdecomp` cannot recover an embedded canary secret from the encrypted PCK |
 
 ---
 
