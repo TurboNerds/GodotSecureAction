@@ -231,6 +231,7 @@ jobs:
             target=editor \
             ${{ steps.platform.outputs.extra-args }} \
             cache_path=../.scons-cache \
+            --implicit-cache \
             -j$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 4)
 
       - name: Build export template (debug)
@@ -242,6 +243,7 @@ jobs:
             target=template_debug \
             ${{ steps.platform.outputs.extra-args }} \
             cache_path=../.scons-cache \
+            --implicit-cache \
             -j$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 4)
 
       - name: Build export template (release)
@@ -253,6 +255,7 @@ jobs:
             target=template_release \
             ${{ steps.platform.outputs.extra-args }} \
             cache_path=../.scons-cache \
+            --implicit-cache \
             -j$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 4)
 
       # ── Upload artifacts ─────────────────────────────────────────────────────
