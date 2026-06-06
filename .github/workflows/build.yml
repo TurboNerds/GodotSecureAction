@@ -93,7 +93,19 @@ jobs:
           key: godot-source-${{ env.GODOT_REPO }}-${{ env.GODOT_VERSION }}
 
       # ── SCons build cache ────────────────────────────────────────────────────
-      # Keyed per cipher + OS so caches from different combinations never mix.
+      # SCons CacheDir is content-addressed: each compiled object is stored
+      # under a hash of (source content + compiler flags + all dependencies).
+      # Unpatched files produce the same hash every run and are restored from
+      # cache without recompilation. Only the files Godot Secure modifies —
+      # and anything that transitively includes their changed headers — will
+      # miss and be recompiled.
+      #
+      # Save key    : scons-{cipher}-{os}-{version}-{hash}  (exact match)
+      # Restore keys: fall back first to the same cipher (different hash, e.g.
+      #               after a Godot version bump), then to any other cipher for
+      #               the same OS and version. The cross-cipher fallback lets a
+      #               Camellia job seed from an AES cache and skip recompiling
+      #               the ~99% of object files that are identical across ciphers.
 
       - name: Restore SCons cache
         uses: actions/cache@v5
@@ -105,6 +117,8 @@ jobs:
           restore-keys: |
             scons-${{ matrix.cipher }}-${{ runner.os }}-${{ env.GODOT_VERSION }}-
             scons-${{ matrix.cipher }}-${{ runner.os }}-
+            scons-${{ runner.os }}-${{ env.GODOT_VERSION }}-
+            scons-${{ runner.os }}-
 
       # ── Download godot_secure.py ─────────────────────────────────────────────
 
