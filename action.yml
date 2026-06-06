@@ -342,24 +342,10 @@ runs:
       working-directory: ${{ inputs.godot-source }}
       run: python misc/scripts/install_d3d12_sdk_windows.py
 
-    # ── SCons build cache ───────────────────────────────────────────────────────
-
-    - name: Restore SCons cache
-      if: inputs.scons-cache == 'true'
-      uses: actions/cache@v5
-      with:
-        path: ${{ inputs.scons-cache-path }}
-        key: >-
-          scons-${{ inputs.algorithm }}-${{ inputs.godot-repo }}-${{
-          inputs.godot-version }}-${{ inputs.platform }}-${{ inputs.arch }}-${{
-          inputs.precision }}-${{ runner.os }}-${{
-          hashFiles(format('{0}/version.py', inputs.godot-source)) }}
-        restore-keys: |
-          scons-${{ inputs.algorithm }}-${{ inputs.godot-repo }}-${{ inputs.godot-version }}-${{ inputs.platform }}-${{ inputs.arch }}-${{ inputs.precision }}-${{ runner.os }}-
-          scons-${{ inputs.algorithm }}-${{ inputs.godot-repo }}-${{ inputs.godot-version }}-${{ inputs.platform }}-${{ inputs.arch }}-${{ runner.os }}-
-          scons-${{ inputs.godot-repo }}-${{ inputs.godot-version }}-${{ inputs.platform }}-${{ inputs.arch }}-${{ runner.os }}-
-
     # ── Resolve build parameters ────────────────────────────────────────────────
+    # Runs before the SCons cache restore so the resolved platform and arch
+    # values can be used in the cache key instead of the raw (possibly empty)
+    # input values.
 
     - name: Resolve platform, arch, targets, and extra args
       id: params
@@ -380,12 +366,15 @@ runs:
         echo "platform=$PLATFORM" >> "$GITHUB_OUTPUT"
 
         # ── Architecture ─────────────────────────────────────────────────────────
+        # macOS: leave arch empty so SCons auto-detects the host (arm64 on
+        # macos-latest / Apple Silicon, x86_64 on older Intel runners).
+        # 'universal' is not a valid SCons arch value for Godot.
         ARCH="${{ inputs.arch }}"
         if [ -z "$ARCH" ]; then
           case "${{ runner.os }}" in
-            Linux)   ARCH="x86_64"   ;;
-            macOS)   ARCH="universal" ;;
-            Windows) ARCH="x86_64"   ;;
+            Linux)   ARCH="x86_64" ;;
+            macOS)   ARCH=""       ;;
+            Windows) ARCH="x86_64" ;;
           esac
         fi
         echo "arch=$ARCH" >> "$GITHUB_OUTPUT"
@@ -423,6 +412,25 @@ runs:
         else
           echo "cache-arg=" >> "$GITHUB_OUTPUT"
         fi
+
+    # ── SCons build cache ───────────────────────────────────────────────────────
+    # Runs after params so the cache key uses the resolved platform and arch
+    # rather than the raw (possibly empty) input values.
+
+    - name: Restore SCons cache
+      if: inputs.scons-cache == 'true'
+      uses: actions/cache@v5
+      with:
+        path: ${{ inputs.scons-cache-path }}
+        key: >-
+          scons-${{ inputs.algorithm }}-${{ inputs.godot-repo }}-${{
+          inputs.godot-version }}-${{ steps.params.outputs.platform }}-${{
+          steps.params.outputs.arch }}-${{ inputs.precision }}-${{ runner.os }}-${{
+          hashFiles(format('{0}/version.py', inputs.godot-source)) }}
+        restore-keys: |
+          scons-${{ inputs.algorithm }}-${{ inputs.godot-repo }}-${{ inputs.godot-version }}-${{ steps.params.outputs.platform }}-${{ steps.params.outputs.arch }}-${{ inputs.precision }}-${{ runner.os }}-
+          scons-${{ inputs.algorithm }}-${{ inputs.godot-repo }}-${{ inputs.godot-version }}-${{ steps.params.outputs.platform }}-${{ steps.params.outputs.arch }}-${{ runner.os }}-
+          scons-${{ inputs.godot-repo }}-${{ inputs.godot-version }}-${{ steps.params.outputs.platform }}-${{ steps.params.outputs.arch }}-${{ runner.os }}-
 
     # ── Build ───────────────────────────────────────────────────────────────────
 
