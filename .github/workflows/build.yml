@@ -43,7 +43,6 @@ jobs:
           algorithm:         ${{ matrix.cipher }}
           encryption-key:    ${{ secrets.GODOT_ENCRYPTION_KEY }}
           target:            all
-          lto:               full
           scons-cache:       true
 
       - name: Upload Godot Secure log

@@ -103,10 +103,13 @@ inputs:
   lto:
     description: >
       Link-time optimisation level.
-      Accepted values: none, full.
-      'full' produces smaller, faster binaries but significantly increases link
-      time. Recommended for release distributions.
-    default: 'full'
+      Accepted values: none, auto, full.
+      'auto' enables thin LTO for release targets and disables it for editor
+      and debug targets — good for CI builds where speed matters.
+      'full' applies LTO to every target and produces the most optimised
+      binaries at the cost of significantly longer link time. Use for
+      release distributions.
+    default: 'auto'
 
   extra-scons-args:
     description: >
@@ -401,6 +404,7 @@ runs:
         echo "platform-args=$PLATFORM_ARGS" >> "$GITHUB_OUTPUT"
 
         # ── LTO ──────────────────────────────────────────────────────────────────
+        # Normalise legacy bool aliases; pass none/auto/full through unchanged.
         LTO_VAL="${{ inputs.lto }}"
         [ "$LTO_VAL" = "true"  ] && LTO_VAL="full"
         [ "$LTO_VAL" = "false" ] && LTO_VAL="none"
