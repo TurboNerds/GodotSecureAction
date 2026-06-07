@@ -108,27 +108,27 @@ inputs:
   # ── Build ─────────────────────────────────────────────────────────────────────
 
   target:
-    description: Build target(s) to compile. Accepted values: editor, template_debug, template_release, all.
+    description: 'Build target(s) to compile. Accepted values: editor, template_debug, template_release, all.'
     default: 'all'
 
   platform:
-    description: Target platform. Auto-detected when empty. Accepted values: linuxbsd, macos, windows
+    description: 'Target platform. Auto-detected when empty. Accepted values: linuxbsd, macos, windows'
     default: ''
 
   arch:
-    description: Target architecture. Auto-detected when empty. Accepted values: x86_64, arm64
+    description: 'Target architecture. Auto-detected when empty. Accepted values: x86_64, arm64'
     default: ''
 
   precision:
-    description: Floating-point precision. Accepted values: single, double.
+    description: 'Floating-point precision. Accepted values: single, double.'
     default: 'single'
 
   lto:
-    description: Link-time optimisation level. Accepted values: none, auto, full.
+    description: 'Link-time optimisation level. Accepted values: none, auto, full.'
     default: 'auto'
 
   extra-scons-args:
-    description: Additional SCons arguments. Example: "use_llvm=yes linker=mold"
+    description: 'Additional SCons arguments. Example: "use_llvm=yes linker=mold"'
     default: ''
 
   scons-cache:
