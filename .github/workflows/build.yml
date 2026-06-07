@@ -83,7 +83,7 @@ jobs:
 
   # ── Integration tests ─────────────────────────────────────────────────────────
   # Runs on Linux using the AES bundle. Tests:
-  #   1. Smoke test   — editor reports patched version string
+  #   1. Smoke test   — startup banner contains "(With Godot Secure)"
   #   2. Export test  — test project exports successfully under headless mode
   #   3. Magic header — exported PCK does not carry the default Godot magic
   #   4. Anti-RE test — gdsdecomp cannot recover the embedded canary secret
@@ -117,16 +117,20 @@ jobs:
           echo "Found editor: $BIN"
 
       # ── Test 1: smoke test ─────────────────────────────────────────────────
+      # Godot Secure patches version.py's `name` field, which appears in the
+      # startup banner ("Godot Engine (With Godot Secure) v4.6.stable...").
+      # --version only outputs the semver number; use --headless --quit to
+      # capture the full startup output that contains the engine name instead.
 
-      - name: Smoke test — version string
+      - name: Smoke test — startup banner contains "(With Godot Secure)"
         run: |
-          VERSION=$("${{ steps.editor.outputs.path }}" --headless --version 2>&1 || true)
-          echo "Version output: $VERSION"
-          if echo "$VERSION" | grep -q "With Godot Secure"; then
-            echo "✓  PASS — version string contains '(With Godot Secure)'"
+          BANNER=$("${{ steps.editor.outputs.path }}" --headless --quit 2>&1 || true)
+          echo "Startup output:"
+          echo "$BANNER"
+          if echo "$BANNER" | grep -q "With Godot Secure"; then
+            echo "✓  PASS — startup banner contains '(With Godot Secure)'"
           else
-            echo "✗  FAIL — version string does not contain '(With Godot Secure)'"
-            echo "   Full output: $VERSION"
+            echo "✗  FAIL — startup banner does not contain '(With Godot Secure)'"
             exit 1
           fi
 
