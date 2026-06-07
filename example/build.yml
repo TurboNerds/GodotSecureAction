@@ -298,7 +298,7 @@ jobs:
   # artifacts with the editor and both templates for all three platforms.
 
   package:
-    name: Package / ${{ matrix.cipher }}
+    name: Package (${{ matrix.cipher }})
     needs: [build, integration-test]
     runs-on: ubuntu-latest
 

@@ -266,7 +266,7 @@ jobs:
   # Only runs when integration tests pass.
 
   package:
-    name: Package / ${{ matrix.cipher }}
+    name: Package (${{ matrix.cipher }})
     needs: [build, integration-test]
     runs-on: ubuntu-latest
 

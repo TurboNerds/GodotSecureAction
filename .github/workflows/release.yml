@@ -317,7 +317,7 @@ jobs:
   #     windows/  — editor, template_debug, template_release (.exe x86_64)
 
   package:
-    name: Package / ${{ matrix.cipher }}
+    name: Package (${{ matrix.cipher }})
     needs: [build, integration-test]
     runs-on: ubuntu-latest
 
