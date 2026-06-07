@@ -106,7 +106,7 @@ jobs:
 
       - name: Upload Godot Secure log
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: log-${{ matrix.cipher }}-${{ runner.os }}
           path: godot_secure_*.log
@@ -116,21 +116,21 @@ jobs:
       # without fetching the full release zip.
 
       - name: Upload editor
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: editor-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-${{ runner.os }}
           path: godot-source/bin/*editor*
           if-no-files-found: error
 
       - name: Upload debug template
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: template-debug-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-${{ runner.os }}
           path: godot-source/bin/*template_debug*
           if-no-files-found: error
 
       - name: Upload release template
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: template-release-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-${{ runner.os }}
           path: godot-source/bin/*template_release*
@@ -139,7 +139,7 @@ jobs:
       # Per-OS bundle — consumed by the package job to build the release zip.
 
       - name: Upload OS bundle
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: bundle-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-${{ runner.os }}
           path: godot-source/bin/godot.*
@@ -162,7 +162,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Download AES Linux bundle
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: bundle-${{ env.GODOT_VERSION }}-aes-Linux
           path: godot-bundle/
@@ -328,19 +328,19 @@ jobs:
 
     steps:
       - name: Download Linux bundle
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: bundle-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-Linux
           path: release/linux/
 
       - name: Download macOS bundle
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: bundle-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-macOS
           path: release/macos/
 
       - name: Download Windows bundle
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: bundle-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-Windows
           path: release/windows/
@@ -349,7 +349,7 @@ jobs:
         run: find release/ -type f | sort
 
       - name: Upload release zip
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: godot-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-release
           path: release/
