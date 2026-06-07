@@ -135,6 +135,10 @@ inputs:
     description: Cache compiled SCons objects between runs to speed up incremental builds.
     default: 'true'
 
+  scons-cache-limit:
+    description: 'Maximum SCons cache size in GB. Godot prunes least-recently-used objects at build end to stay under the limit. 0 means unlimited.'
+    default: '1'
+
   scons-cache-path:
     description: Path used for the SCons build cache directory.
     default: '.scons-cache'
@@ -504,7 +508,7 @@ runs:
         # is always saved empty and never actually restores anything.
         if [ "${{ inputs.scons-cache }}" = "true" ]; then
           CACHE_ABS="$GITHUB_WORKSPACE/${{ inputs.scons-cache-path }}"
-          echo "cache-arg=cache_path=${CACHE_ABS}" >> "$GITHUB_OUTPUT"
+          echo "cache-arg=cache_path=${CACHE_ABS} cache_limit=${{ inputs.scons-cache-limit }}" >> "$GITHUB_OUTPUT"
           echo "cache-abs=${CACHE_ABS}" >> "$GITHUB_OUTPUT"
         else
           echo "cache-arg=" >> "$GITHUB_OUTPUT"
@@ -523,13 +527,12 @@ runs:
           ${{ inputs.scons-cache-path }}
           ${{ inputs.godot-source }}/.sconsign.dblite
         key: >-
-          scons-${{ inputs.algorithm }}-${{ inputs.godot-repo }}-${{
+          scons-${{ inputs.godot-repo }}-${{
           inputs.godot-version }}-${{ steps.params.outputs.platform }}-${{
           steps.params.outputs.arch }}-${{ inputs.precision }}-${{ runner.os }}-${{
           hashFiles(format('{0}/version.py', inputs.godot-source)) }}
         restore-keys: |
-          scons-${{ inputs.algorithm }}-${{ inputs.godot-repo }}-${{ inputs.godot-version }}-${{ steps.params.outputs.platform }}-${{ steps.params.outputs.arch }}-${{ inputs.precision }}-${{ runner.os }}-
-          scons-${{ inputs.algorithm }}-${{ inputs.godot-repo }}-${{ inputs.godot-version }}-${{ steps.params.outputs.platform }}-${{ steps.params.outputs.arch }}-${{ runner.os }}-
+          scons-${{ inputs.godot-repo }}-${{ inputs.godot-version }}-${{ steps.params.outputs.platform }}-${{ steps.params.outputs.arch }}-${{ inputs.precision }}-${{ runner.os }}-
           scons-${{ inputs.godot-repo }}-${{ inputs.godot-version }}-${{ steps.params.outputs.platform }}-${{ steps.params.outputs.arch }}-${{ runner.os }}-
 
     # ── Build ───────────────────────────────────────────────────────────────────
