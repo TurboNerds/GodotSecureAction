@@ -185,24 +185,26 @@ jobs:
               print(' ', a['name'])
           "
 
-          # Try zip first, then tar.gz as fallback (naming conventions vary by release)
+          # Try zip first, then tar.gz as fallback (naming conventions vary by release).
+          # gdsdecomp does not include the arch in the filename (e.g. GDRE_tools-linux.zip),
+          # so we only match on the OS token, not x86_64/amd64.
           ASSET_URL=$(echo "$RELEASE_JSON" | python3 -c "
           import json, sys
           data = json.load(sys.stdin)
           assets = data.get('assets', [])
-          def is_linux_x64(name):
+          def is_linux(name):
               n = name.lower()
-              return ('linux' in n or 'lin' in n) and ('x86_64' in n or 'amd64' in n)
-          # prefer zip; fall back to tar.gz
+              return 'linux' in n or 'lin' in n
+          # prefer zip; fall back to tar.gz / tar.xz
           for ext in ('.zip', '.tar.gz', '.tar.xz'):
               for a in assets:
-                  if is_linux_x64(a['name']) and a['name'].lower().endswith(ext):
+                  if is_linux(a['name']) and a['name'].lower().endswith(ext):
                       print(a['browser_download_url'])
                       sys.exit(0)
           ")
 
           if [ -z "$ASSET_URL" ]; then
-            echo "ERROR: no Linux x86_64 archive found in the latest gdsdecomp release."
+            echo "ERROR: no Linux archive found in the latest gdsdecomp release."
             echo "Check https://github.com/bruvzg/gdsdecomp/releases/latest for available assets."
             exit 1
           fi
