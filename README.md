@@ -34,9 +34,32 @@ on:
     branches: [main]
 
 jobs:
+  # Generate magic headers, security token, and KDF formula once so every OS
+  # build embeds identical values. Without this, a Linux editor cannot open a
+  # PCK exported by the macOS or Windows build — they would have different magic
+  # headers and key derivation formulas baked in at compile time.
+  setup:
+    name: Generate shared security parameters
+    runs-on: ubuntu-latest
+    outputs:
+      base-tag:       ${{ steps.gen.outputs.base-tag }}
+      enc-tag:        ${{ steps.gen.outputs.enc-tag }}
+      security-token: ${{ steps.gen.outputs.security-token }}
+      kdf-formula:    ${{ steps.gen.outputs.kdf-formula }}
+    steps:
+      - name: Download Godot Secure script
+        run: |
+          curl -fL \
+            "https://github.com/emabrey/Godot-Secure/releases/download/v1.0.2-alpha/godot_secure.py" \
+            -o godot_secure.py
+      - name: Generate security parameters
+        id: gen
+        run: python3 godot_secure.py --mode generate --advanced-kdf --non-interactive
+
   build:
     name: ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    needs: [setup]
     strategy:
       fail-fast: false
       matrix:
@@ -50,9 +73,13 @@ jobs:
           godot-version:  '4.6-stable'
           algorithm:      aes              # aes · camellia · aria — pick one, use it everywhere
           encryption-key: ${{ secrets.GODOT_ENCRYPTION_KEY }}
+          base-tag:       ${{ needs.setup.outputs.base-tag }}
+          enc-tag:        ${{ needs.setup.outputs.enc-tag }}
+          security-token: ${{ needs.setup.outputs.security-token }}
+          kdf-formula:    ${{ needs.setup.outputs.kdf-formula }}
 
       - name: Upload binaries
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: godot-secure-${{ steps.godot-secure.outputs.algorithm }}-${{ runner.os }}
           path: godot-source/bin/
@@ -107,7 +134,13 @@ All three use a 256-bit key and accept the same `SCRIPT_AES256_ENCRYPTION_KEY` e
 | `godot-secure-tag` | `v1.0.2-alpha` | Release tag to download `godot_secure.py` from. |
 | `algorithm` | `aes` | Cipher: `aes`, `camellia`, or `aria`. Every platform binary in a distribution must use the same cipher. |
 | `encryption-key` | *(empty — random)* | 64-character hex encryption key. Pass your repository secret here. When omitted a random key is generated and recorded in the log artifact. |
-| `advanced-kdf` | `true` | Enable the advanced key derivation function for additional key hardening. |
+| `advanced-kdf` | `true` | Enable the advanced key derivation function for additional key hardening. Ignored when `kdf-formula` is provided. |
+| `base-tag` | *(random per job)* | 4-character uppercase ASCII tag burned into the pack file magic header. **Must be identical across all OS builds** — generate once in a `setup` job and pass via `needs.setup.outputs.base-tag`. |
+| `enc-tag` | *(random per job)* | 4-character uppercase ASCII tag for the encrypted file magic header. Same cross-OS requirement as `base-tag`. |
+| `security-token` | *(random per job)* | 64-character hex security token mixed into the key derivation at pack open/write time. Same cross-OS requirement as `base-tag`. |
+| `kdf-formula` | *(default XOR)* | Verbatim C statement for per-byte key derivation inside the token loop. Overrides `advanced-kdf`. **Must be identical across all OS builds** — generate once in a `setup` job. |
+
+> **Multi-OS builds:** if `base-tag`, `enc-tag`, `security-token`, and `kdf-formula` differ between the Linux, macOS, and Windows jobs, the editor on one platform will be unable to open PCK files exported on another. Always use a `setup` job to generate these values once and pass them to all build jobs — see the examples below.
 
 ### Build
 
@@ -157,8 +190,27 @@ on:
     tags: ['v*']
 
 jobs:
+  setup:
+    name: Generate shared security parameters
+    runs-on: ubuntu-latest
+    outputs:
+      base-tag:       ${{ steps.gen.outputs.base-tag }}
+      enc-tag:        ${{ steps.gen.outputs.enc-tag }}
+      security-token: ${{ steps.gen.outputs.security-token }}
+      kdf-formula:    ${{ steps.gen.outputs.kdf-formula }}
+    steps:
+      - name: Download Godot Secure script
+        run: |
+          curl -fL \
+            "https://github.com/emabrey/Godot-Secure/releases/download/v1.0.2-alpha/godot_secure.py" \
+            -o godot_secure.py
+      - name: Generate security parameters
+        id: gen
+        run: python3 godot_secure.py --mode generate --advanced-kdf --non-interactive
+
   build:
     runs-on: ${{ matrix.os }}
+    needs: [setup]
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
@@ -170,9 +222,13 @@ jobs:
           godot-version:  '4.6-stable'
           algorithm:      aes
           encryption-key: ${{ secrets.GODOT_ENCRYPTION_KEY }}
+          base-tag:       ${{ needs.setup.outputs.base-tag }}
+          enc-tag:        ${{ needs.setup.outputs.enc-tag }}
+          security-token: ${{ needs.setup.outputs.security-token }}
+          kdf-formula:    ${{ needs.setup.outputs.kdf-formula }}
           lto:            full          # maximum optimisation for a release build
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: godot-secure-${{ steps.godot-secure.outputs.algorithm }}-${{ runner.os }}
           path: godot-source/bin/
@@ -232,12 +288,31 @@ jobs:
 
 ### Build all three ciphers at once
 
-Only needed when you want to support multiple cipher options for different distribution contexts (e.g. one build for general users and one for a regulatory region).
+Only needed when you want to support multiple cipher options for different distribution contexts (e.g. one build for general users and one for a regulatory region). A single `setup` job generates the security parameters and all 9 matrix jobs share them — the magic headers only need to be consistent across the 3 OSes within each cipher, which this guarantees.
 
 ```yaml
 jobs:
+  setup:
+    name: Generate shared security parameters
+    runs-on: ubuntu-latest
+    outputs:
+      base-tag:       ${{ steps.gen.outputs.base-tag }}
+      enc-tag:        ${{ steps.gen.outputs.enc-tag }}
+      security-token: ${{ steps.gen.outputs.security-token }}
+      kdf-formula:    ${{ steps.gen.outputs.kdf-formula }}
+    steps:
+      - name: Download Godot Secure script
+        run: |
+          curl -fL \
+            "https://github.com/emabrey/Godot-Secure/releases/download/v1.0.2-alpha/godot_secure.py" \
+            -o godot_secure.py
+      - name: Generate security parameters
+        id: gen
+        run: python3 godot_secure.py --mode generate --advanced-kdf --non-interactive
+
   build:
     runs-on: ${{ matrix.os }}
+    needs: [setup]
     strategy:
       matrix:
         os:     [ubuntu-latest, macos-latest, windows-latest]
@@ -250,8 +325,12 @@ jobs:
           godot-version:  '4.6-stable'
           algorithm:      ${{ matrix.cipher }}
           encryption-key: ${{ secrets.GODOT_ENCRYPTION_KEY }}
+          base-tag:       ${{ needs.setup.outputs.base-tag }}
+          enc-tag:        ${{ needs.setup.outputs.enc-tag }}
+          security-token: ${{ needs.setup.outputs.security-token }}
+          kdf-formula:    ${{ needs.setup.outputs.kdf-formula }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: godot-secure-${{ steps.godot-secure.outputs.algorithm }}-${{ runner.os }}
           path: godot-source/bin/

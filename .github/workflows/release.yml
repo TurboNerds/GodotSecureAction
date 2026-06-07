@@ -45,11 +45,39 @@ env:
 
 jobs:
 
+  # ── Setup: generate shared security parameters ────────────────────────────────
+  # All 9 build jobs must embed identical magic headers, security token, and KDF
+  # formula or cross-platform PCK files will fail to open (wrong magic) or
+  # decrypt to garbage (wrong token/formula). Generate all four values once here
+  # and pass them to every build job via needs outputs.
+
+  setup:
+    name: Generate shared security parameters
+    runs-on: ubuntu-latest
+
+    outputs:
+      base-tag:       ${{ steps.gen.outputs.base-tag }}
+      enc-tag:        ${{ steps.gen.outputs.enc-tag }}
+      security-token: ${{ steps.gen.outputs.security-token }}
+      kdf-formula:    ${{ steps.gen.outputs.kdf-formula }}
+
+    steps:
+      - name: Download Godot Secure script
+        run: |
+          curl -fL \
+            "https://github.com/${{ env.GODOT_SECURE_REPO }}/releases/download/${{ env.GODOT_SECURE_TAG }}/godot_secure.py" \
+            -o godot_secure.py
+
+      - name: Generate security parameters
+        id: gen
+        run: python3 godot_secure.py --mode generate --advanced-kdf --non-interactive
+
   # ── Build matrix: 3 ciphers × 3 OSes = 9 parallel jobs ──────────────────────
 
   build:
     name: Build / ${{ matrix.cipher }} / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    needs: [setup]
 
     strategy:
       fail-fast: false
@@ -68,13 +96,17 @@ jobs:
           godot-secure-tag:  ${{ env.GODOT_SECURE_TAG }}
           algorithm:         ${{ matrix.cipher }}
           encryption-key:    ${{ secrets.GODOT_ENCRYPTION_KEY }}
+          base-tag:          ${{ needs.setup.outputs.base-tag }}
+          enc-tag:           ${{ needs.setup.outputs.enc-tag }}
+          security-token:    ${{ needs.setup.outputs.security-token }}
+          kdf-formula:       ${{ needs.setup.outputs.kdf-formula }}
           target:            all
           lto:               full
           scons-cache:       true
 
       - name: Upload Godot Secure log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: log-${{ matrix.cipher }}-${{ runner.os }}
           path: godot_secure_*.log
@@ -84,21 +116,21 @@ jobs:
       # without fetching the full release zip.
 
       - name: Upload editor
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: editor-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-${{ runner.os }}
           path: godot-source/bin/*editor*
           if-no-files-found: error
 
       - name: Upload debug template
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: template-debug-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-${{ runner.os }}
           path: godot-source/bin/*template_debug*
           if-no-files-found: error
 
       - name: Upload release template
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: template-release-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-${{ runner.os }}
           path: godot-source/bin/*template_release*
@@ -107,7 +139,7 @@ jobs:
       # Per-OS bundle — consumed by the package job to build the release zip.
 
       - name: Upload OS bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: bundle-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-${{ runner.os }}
           path: godot-source/bin/
@@ -119,7 +151,7 @@ jobs:
 
   integration-test:
     name: Integration tests
-    needs: build
+    needs: [setup, build]
     runs-on: ubuntu-latest
 
     env:
@@ -127,10 +159,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Download AES Linux bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: bundle-${{ env.GODOT_VERSION }}-aes-Linux
           path: godot-bundle/
@@ -296,19 +328,19 @@ jobs:
 
     steps:
       - name: Download Linux bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: bundle-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-Linux
           path: release/linux/
 
       - name: Download macOS bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: bundle-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-macOS
           path: release/macos/
 
       - name: Download Windows bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: bundle-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-Windows
           path: release/windows/
@@ -317,7 +349,7 @@ jobs:
         run: find release/ -type f | sort
 
       - name: Upload release zip
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: godot-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-release
           path: release/

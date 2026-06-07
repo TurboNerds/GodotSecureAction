@@ -70,57 +70,69 @@ inputs:
   advanced-kdf:
     description: >
       Enable the advanced key derivation function in Godot Secure for
-      additional key hardening.
+      additional key hardening. Ignored when kdf-formula is provided.
     default: 'true'
+
+  base-tag:
+    description: >
+      4-character uppercase ASCII tag for the pack file magic header
+      (PACK_HEADER_MAGIC). When omitted, a random tag is generated per job.
+      For multi-OS matrix builds, generate this once in a setup job and pass
+      the same value to every build job — all platform binaries must share
+      identical magic headers or they cannot read each other's PCK files.
+    default: ''
+
+  enc-tag:
+    description: >
+      4-character uppercase ASCII tag for the encrypted file magic header
+      (ENCRYPTED_HEADER_MAGIC). Same cross-OS coordination requirement as
+      base-tag.
+    default: ''
+
+  security-token:
+    description: >
+      64-character hex security token (32 bytes) embedded in the compiled
+      binary and mixed into the key derivation formula at pack open/write
+      time. Same cross-OS coordination requirement as base-tag.
+    default: ''
+
+  kdf-formula:
+    description: >
+      Verbatim C statement for the per-byte key derivation inside the token
+      XOR loop. When provided this overrides --advanced-kdf and the default
+      XOR formula. Must be identical across every OS build in a distribution
+      or PCK decryption will produce garbage on cross-platform exports.
+      Generate once in a setup job and pass the same value to all build jobs.
+    default: ''
 
   # ── Build ─────────────────────────────────────────────────────────────────────
 
   target:
-    description: >
-      Build target(s) to compile.
-      Accepted values: editor, template_debug, template_release, all.
-      'all' compiles editor + template_debug + template_release.
+    description: Build target(s) to compile. Accepted values: editor, template_debug, template_release, all.
     default: 'all'
 
   platform:
-    description: >
-      Target platform. When left empty the platform is auto-detected from the
-      runner OS (linuxbsd, macos, windows).
+    description: Target platform. Auto-detected when empty. Accepted values: linuxbsd, macos, windows
     default: ''
 
   arch:
-    description: >
-      Target architecture. When left empty the architecture is auto-detected.
-      Common values: x86_64, arm64, universal (macOS fat binary).
+    description: Target architecture. Auto-detected when empty. Accepted values: x86_64, arm64
     default: ''
 
   precision:
-    description: >
-      Floating-point precision.
-      Accepted values: single, double.
+    description: Floating-point precision. Accepted values: single, double.
     default: 'single'
 
   lto:
-    description: >
-      Link-time optimisation level.
-      Accepted values: none, auto, full.
-      'auto' enables thin LTO for release targets and disables it for editor
-      and debug targets — good for CI builds where speed matters.
-      'full' applies LTO to every target and produces the most optimised
-      binaries at the cost of significantly longer link time. Use for
-      release distributions.
+    description: Link-time optimisation level. Accepted values: none, auto, full.
     default: 'auto'
 
   extra-scons-args:
-    description: >
-      Additional SCons arguments appended verbatim to every scons invocation.
-      Example: "use_llvm=yes linker=mold"
+    description: Additional SCons arguments. Example: "use_llvm=yes linker=mold"
     default: ''
 
   scons-cache:
-    description: >
-      Cache compiled SCons objects between runs to speed up incremental builds.
-      Strongly recommended — a warm cache reduces build time by 60–90 %.
+    description: Cache compiled SCons objects between runs to speed up incremental builds.
     default: 'true'
 
   scons-cache-path:
@@ -142,9 +154,7 @@ outputs:
     value: ${{ steps.resolve-source.outputs.source-path }}
 
   godot-secure-script:
-    description: >
-      Absolute path to the downloaded godot_secure.py. Empty when
-      godot-secure-repo was not set.
+    description: Absolute path to the downloaded godot_secure.py.
     value: ${{ steps.fetch-godot-secure.outputs.script-path }}
 
   editor-path:
@@ -167,6 +177,56 @@ branding:
 runs:
   using: 'composite'
   steps:
+
+    # ── Input validation ────────────────────────────────────────────────────────
+    # Fail immediately with a clear message rather than silently skipping steps
+    # or producing an incompatible binary when required inputs are absent.
+
+    - name: Validate required inputs
+      shell: bash
+      run: |
+        ERRORS=0
+
+        if [ -z "${{ inputs.godot-secure-repo }}" ]; then
+          echo "::error::godot-secure-repo is required. " \
+               "Set it to the GitHub repository that hosts godot_secure.py " \
+               "(default: emabrey/Godot-Secure)."
+          ERRORS=$((ERRORS + 1))
+        fi
+
+        if [ -z "${{ inputs.godot-secure-tag }}" ]; then
+          echo "::error::godot-secure-tag is required. " \
+               "Set it to the release tag to download godot_secure.py from " \
+               "(default: v1.0.2-alpha)."
+          ERRORS=$((ERRORS + 1))
+        fi
+
+        if [ -z "${{ inputs.algorithm }}" ]; then
+          echo "::error::algorithm is required. Accepted values: aes, camellia, aria."
+          ERRORS=$((ERRORS + 1))
+        fi
+
+        case "${{ inputs.algorithm }}" in
+          aes|camellia|aria) ;;
+          *)
+            echo "::error::algorithm '${{ inputs.algorithm }}' is not valid. " \
+                 "Accepted values: aes, camellia, aria."
+            ERRORS=$((ERRORS + 1))
+            ;;
+        esac
+
+        if [ -z "${{ inputs.encryption-key }}" ]; then
+          echo "::warning::encryption-key is not set. " \
+               "Godot Secure will generate a random key for this build — " \
+               "check the log artifact for the generated key. " \
+               "For reproducible project distributions, store a fixed key as a " \
+               "repository secret and pass it via this input."
+        fi
+
+        if [ "$ERRORS" -gt 0 ]; then
+          echo "::error::$ERRORS required input(s) missing or invalid. See above."
+          exit 1
+        fi
 
     # ── Python + SCons ──────────────────────────────────────────────────────────
 
@@ -271,7 +331,6 @@ runs:
     # ── Download Godot Secure ───────────────────────────────────────────────────
 
     - name: Download Godot Secure script
-      if: inputs.godot-secure-repo != ''
       id: fetch-godot-secure
       shell: bash
       run: |
@@ -292,24 +351,44 @@ runs:
     # variable so it is never visible in the process argument list.
 
     - name: Apply Godot Secure (${{ inputs.algorithm }})
-      if: inputs.godot-secure-repo != ''
       shell: bash
       env:
         SCRIPT_AES256_ENCRYPTION_KEY: ${{ inputs.encryption-key }}
+        GS_BASE_TAG:    ${{ inputs.base-tag }}
+        GS_ENC_TAG:     ${{ inputs.enc-tag }}
+        GS_TOKEN:       ${{ inputs.security-token }}
+        GS_KDF_FORMULA: ${{ inputs.kdf-formula }}
       run: |
-        # Mask the key so it never appears in plain text in the log.
-        if [ -n "$SCRIPT_AES256_ENCRYPTION_KEY" ]; then
-          echo "::add-mask::$SCRIPT_AES256_ENCRYPTION_KEY"
+        # Mask sensitive values before they can appear in any log line.
+        [ -n "$SCRIPT_AES256_ENCRYPTION_KEY" ] && echo "::add-mask::$SCRIPT_AES256_ENCRYPTION_KEY"
+        [ -n "$GS_TOKEN" ]                     && echo "::add-mask::$GS_TOKEN"
+
+        # Build the argument list as a bash array so the KDF formula (which
+        # contains spaces and special characters) is passed as a single
+        # correctly-quoted argument rather than being word-split.
+        ARGS=(
+          --mode apply
+          --algorithm "${{ inputs.algorithm }}"
+          --non-interactive
+        )
+
+        # Pass pre-generated cross-OS values when provided; fall back to
+        # per-job random generation when inputs are empty (single-OS builds).
+        [ -n "$GS_BASE_TAG" ]    && ARGS+=(--base-tag    "$GS_BASE_TAG")
+        [ -n "$GS_ENC_TAG" ]     && ARGS+=(--enc-tag     "$GS_ENC_TAG")
+        [ -n "$GS_TOKEN" ]       && ARGS+=(--token       "$GS_TOKEN")
+
+        if [ -n "$GS_KDF_FORMULA" ]; then
+          # Explicit formula supplied by setup job — takes precedence.
+          ARGS+=(--kdf-formula "$GS_KDF_FORMULA")
+        elif [ "${{ inputs.advanced-kdf }}" = "true" ]; then
+          # No shared formula: use advanced-kdf (safe for single-OS builds only).
+          ARGS+=(--advanced-kdf)
         fi
 
-        KDF_FLAG=""
-        [ "${{ inputs.advanced-kdf }}" = "true" ] && KDF_FLAG="--advanced-kdf"
-
-        python "$GITHUB_WORKSPACE/godot_secure.py" "$GITHUB_WORKSPACE/${{ inputs.godot-source }}" \
-          --mode apply \
-          --algorithm "${{ inputs.algorithm }}" \
-          $KDF_FLAG \
-          --non-interactive
+        python "$GITHUB_WORKSPACE/godot_secure.py" \
+          "$GITHUB_WORKSPACE/${{ inputs.godot-source }}" \
+          "${ARGS[@]}"
 
     # ── Platform system dependencies ────────────────────────────────────────────
 
