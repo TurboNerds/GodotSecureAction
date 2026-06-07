@@ -128,12 +128,11 @@ jobs:
           path: godot-source/bin/*template_release*
           if-no-files-found: error
 
-      # Combined bundle used by the package job below.
       - name: Upload bundle (all targets, this OS)
         uses: actions/upload-artifact@v5
         with:
           name: bundle-${{ matrix.cipher }}-${{ runner.os }}
-          path: godot-source/bin/
+          path: godot-source/bin/godot.*
           if-no-files-found: error
 
   # ── Integration tests ─────────────────────────────────────────────────────────

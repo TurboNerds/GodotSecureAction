@@ -142,7 +142,7 @@ jobs:
         uses: actions/upload-artifact@v5
         with:
           name: bundle-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-${{ runner.os }}
-          path: godot-source/bin/
+          path: godot-source/bin/godot.*
           if-no-files-found: error
 
   # ── Integration tests (Linux, AES) ───────────────────────────────────────────
