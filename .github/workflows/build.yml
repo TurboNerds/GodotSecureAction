@@ -175,19 +175,48 @@ jobs:
 
       - name: Download gdsdecomp
         run: |
-          ASSET_URL=$(curl -fsSL https://api.github.com/repos/bruvzg/gdsdecomp/releases/latest \
-            | python3 -c "
+          RELEASE_JSON=$(curl -fsSL https://api.github.com/repos/bruvzg/gdsdecomp/releases/latest)
+
+          echo "Available gdsdecomp release assets:"
+          echo "$RELEASE_JSON" | python3 -c "
           import json, sys
           data = json.load(sys.stdin)
           for a in data['assets']:
-              name = a['name'].lower()
-              if ('linux' in name or 'lin' in name) and ('x86_64' in name or 'amd64' in name) and name.endswith('.zip'):
-                  print(a['browser_download_url'])
-                  break
+              print(' ', a['name'])
+          "
+
+          # Try zip first, then tar.gz as fallback (naming conventions vary by release)
+          ASSET_URL=$(echo "$RELEASE_JSON" | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          assets = data.get('assets', [])
+          def is_linux_x64(name):
+              n = name.lower()
+              return ('linux' in n or 'lin' in n) and ('x86_64' in n or 'amd64' in n)
+          # prefer zip; fall back to tar.gz
+          for ext in ('.zip', '.tar.gz', '.tar.xz'):
+              for a in assets:
+                  if is_linux_x64(a['name']) and a['name'].lower().endswith(ext):
+                      print(a['browser_download_url'])
+                      sys.exit(0)
           ")
+
+          if [ -z "$ASSET_URL" ]; then
+            echo "ERROR: no Linux x86_64 archive found in the latest gdsdecomp release."
+            echo "Check https://github.com/bruvzg/gdsdecomp/releases/latest for available assets."
+            exit 1
+          fi
           echo "Downloading gdsdecomp from: $ASSET_URL"
-          curl -fL "$ASSET_URL" -o gdsdecomp.zip
-          unzip -q gdsdecomp.zip -d gdsdecomp/
+
+          case "$ASSET_URL" in
+            *.tar.gz)  curl -fL "$ASSET_URL" -o gdsdecomp.tar.gz
+                       mkdir -p gdsdecomp && tar -xzf gdsdecomp.tar.gz -C gdsdecomp/ ;;
+            *.tar.xz)  curl -fL "$ASSET_URL" -o gdsdecomp.tar.xz
+                       mkdir -p gdsdecomp && tar -xJf gdsdecomp.tar.xz -C gdsdecomp/ ;;
+            *)         curl -fL "$ASSET_URL" -o gdsdecomp.zip
+                       unzip -q gdsdecomp.zip -d gdsdecomp/ ;;
+          esac
+
           find gdsdecomp/ -type f | xargs chmod +x 2>/dev/null || true
           echo "gdsdecomp contents:"
           find gdsdecomp/ -type f
