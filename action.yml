@@ -47,7 +47,7 @@ inputs:
 
   godot-secure-tag:
     description: Release tag to download the Godot Secure artifact from.
-    default: 'v1.2.0-alpha'
+    default: 'v1.3.0-alpha'
 
   algorithm:
     description: >
@@ -69,20 +69,12 @@ inputs:
 
   security-token:
     description: >
-      64-character hex security token (32 bytes) embedded in the compiled
-      binary and used to derive the pack magic headers and key derivation
-      formula. For multi-OS matrix builds, generate this once in a setup
-      job and pass the same value to every build job.
-    default: ''
-
-  kdf-formula:
-    description: >
-      Verbatim C statement for the per-byte key derivation inside the token
-      XOR loop. When provided, this formula is used verbatim. When omitted,
-      a random advanced key derivation formula is generated automatically.
-      Must be identical across every OS build in a distribution or PCK
-      decryption will produce garbage on cross-platform exports. Generate
-      once in a setup job and pass the same value to all build jobs.
+      64-character hex security token (32 bytes). The token is the single
+      shared secret for a build: the pack magic headers and KDF formula are
+      both derived from it deterministically via HKDF (RFC 5869) and
+      byte-mapping, so no other security parameters need to be generated or
+      passed separately. For multi-OS matrix builds, generate this once in a
+      setup job and pass the same value to every build job.
     default: ''
 
   # ── Build ─────────────────────────────────────────────────────────────────────
@@ -340,29 +332,22 @@ runs:
       shell: bash
       env:
         SCRIPT_AES256_ENCRYPTION_KEY: ${{ inputs.encryption-key }}
-        GS_TOKEN:       ${{ inputs.security-token }}
-        GS_KDF_FORMULA: ${{ inputs.kdf-formula }}
+        GS_TOKEN: ${{ inputs.security-token }}
       run: |
         # Mask sensitive values before they can appear in any log line.
         [ -n "$SCRIPT_AES256_ENCRYPTION_KEY" ] && echo "::add-mask::$SCRIPT_AES256_ENCRYPTION_KEY"
         [ -n "$GS_TOKEN" ]                     && echo "::add-mask::$GS_TOKEN"
 
-        # Build the argument list as a bash array so the KDF formula (which
-        # contains spaces and special characters) is passed as a single
-        # correctly-quoted argument rather than being word-split.
         ARGS=(
           --mode apply
           --algorithm "${{ inputs.algorithm }}"
           --non-interactive
         )
 
-        [ -n "$GS_TOKEN" ]       && ARGS+=(--token       "$GS_TOKEN")
-
-        if [ -n "$GS_KDF_FORMULA" ]; then
-          ARGS+=(--kdf-formula "$GS_KDF_FORMULA")
-        else
-          ARGS+=(--advanced-kdf)
-        fi
+        # When a security token is provided, all derived parameters (KDF formula,
+        # base-tag, enc-tag) are computed deterministically from it inside the
+        # script via HKDF and byte-mapping — no extra arguments needed.
+        [ -n "$GS_TOKEN" ] && ARGS+=(--token "$GS_TOKEN")
 
         python "$GITHUB_WORKSPACE/godot_secure.py" \
           "$GITHUB_WORKSPACE/${{ inputs.godot-source }}" \

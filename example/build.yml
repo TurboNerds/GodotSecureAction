@@ -55,18 +55,17 @@ jobs:
 
     outputs:
       security-token: ${{ steps.gen.outputs.security-token }}
-      kdf-formula:    ${{ steps.gen.outputs.kdf-formula }}
 
     steps:
       - name: Download Godot Secure script
         run: |
           curl -fL --retry 5 --retry-delay 10 \
-            "https://github.com/emabrey/Godot-Secure/releases/download/v1.2.0-alpha/godot_secure.py" \
+            "https://github.com/emabrey/Godot-Secure/releases/download/v1.3.0-alpha/godot_secure.py" \
             -o godot_secure.py
 
       - name: Generate security parameters
         id: gen
-        run: python3 godot_secure.py --mode generate --advanced-kdf --non-interactive
+        run: python3 godot_secure.py --mode generate --non-interactive
 
   # ── Build matrix: 3 ciphers × 3 OSes = 9 parallel jobs ──────────────────────
 
@@ -90,7 +89,6 @@ jobs:
           algorithm:      ${{ matrix.cipher }}
           encryption-key: ${{ secrets.GODOT_ENCRYPTION_KEY }}
           security-token: ${{ needs.setup.outputs.security-token }}
-          kdf-formula:    ${{ needs.setup.outputs.kdf-formula }}
           target:         all        # editor + template_debug + template_release
           lto:            full       # smaller/faster binaries; slower to link
           scons-cache:    true       # reuse compiled objects across runs

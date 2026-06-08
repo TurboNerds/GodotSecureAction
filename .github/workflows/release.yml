@@ -41,7 +41,7 @@ env:
   GODOT_VERSION:      ${{ github.event.inputs.godot-version || '4.6-stable' }}
   GODOT_REPO:         'godotengine/godot'
   GODOT_SECURE_REPO:  'emabrey/Godot-Secure'
-  GODOT_SECURE_TAG:   'v1.2.0-alpha'
+  GODOT_SECURE_TAG:   'v1.3.0-alpha'
 
 jobs:
 
@@ -57,7 +57,6 @@ jobs:
 
     outputs:
       security-token: ${{ steps.gen.outputs.security-token }}
-      kdf-formula:    ${{ steps.gen.outputs.kdf-formula }}
 
     steps:
       - name: Download Godot Secure script
@@ -68,7 +67,7 @@ jobs:
 
       - name: Generate security parameters
         id: gen
-        run: python3 godot_secure.py --mode generate --advanced-kdf --non-interactive
+        run: python3 godot_secure.py --mode generate --non-interactive
 
   # ── Build matrix: 3 ciphers × 3 OSes = 9 parallel jobs ──────────────────────
 
@@ -95,7 +94,6 @@ jobs:
           algorithm:         ${{ matrix.cipher }}
           encryption-key:    ${{ secrets.GODOT_ENCRYPTION_KEY }}
           security-token:    ${{ needs.setup.outputs.security-token }}
-          kdf-formula:       ${{ needs.setup.outputs.kdf-formula }}
           target:            all
           lto:               full
           scons-cache:       true
