@@ -482,10 +482,12 @@ runs:
     # actions/cache (combined) skips the post-job save when the exact key hits,
     # so any objects compiled in that run are lost.  We split restore and save:
     #   • restore uses restore-keys so we always pick up the most recent cache
-    #   • save appends github.run_id so the key never matches exactly, forcing
-    #     a fresh save after every build that captures incremental changes
-    # GitHub evicts LRU entries automatically once the 10 GB repo limit is hit,
-    # so the growing list of per-run entries stays bounded in practice.
+    #   • save appends algorithm + github.run_id so the key is unique per
+    #     parallel job in the same run (prevents the "key already exists" failure
+    #     that occurs when multiple cipher jobs race to write the same key)
+    # Restore-keys fall back through same-cipher → any-cipher → broader prefix,
+    # since most compiled objects are shared across cipher variants.
+    # GitHub evicts LRU entries automatically once the 10 GB repo limit is hit.
 
     - name: Restore SCons cache
       if: inputs.scons-cache == 'true'
@@ -498,10 +500,11 @@ runs:
         key: >-
           scons-${{ inputs.godot-repo }}-${{ inputs.godot-version }}-${{
           steps.params.outputs.platform }}-${{ steps.params.outputs.arch }}-${{
-          inputs.precision }}-${{ runner.os }}-${{
+          inputs.precision }}-${{ runner.os }}-${{ inputs.algorithm }}-${{
           hashFiles(format('{0}/version.py', inputs.godot-source)) }}-${{ github.run_id }}
         restore-keys: |
-          scons-${{ inputs.godot-repo }}-${{ inputs.godot-version }}-${{ steps.params.outputs.platform }}-${{ steps.params.outputs.arch }}-${{ inputs.precision }}-${{ runner.os }}-${{ hashFiles(format('{0}/version.py', inputs.godot-source)) }}-
+          scons-${{ inputs.godot-repo }}-${{ inputs.godot-version }}-${{ steps.params.outputs.platform }}-${{ steps.params.outputs.arch }}-${{ inputs.precision }}-${{ runner.os }}-${{ inputs.algorithm }}-${{ hashFiles(format('{0}/version.py', inputs.godot-source)) }}-
+          scons-${{ inputs.godot-repo }}-${{ inputs.godot-version }}-${{ steps.params.outputs.platform }}-${{ steps.params.outputs.arch }}-${{ inputs.precision }}-${{ runner.os }}-${{ inputs.algorithm }}-
           scons-${{ inputs.godot-repo }}-${{ inputs.godot-version }}-${{ steps.params.outputs.platform }}-${{ steps.params.outputs.arch }}-${{ inputs.precision }}-${{ runner.os }}-
           scons-${{ inputs.godot-repo }}-${{ inputs.godot-version }}-${{ steps.params.outputs.platform }}-${{ steps.params.outputs.arch }}-${{ runner.os }}-
 
@@ -593,8 +596,7 @@ runs:
 
     # ── Save SCons cache ────────────────────────────────────────────────────────
     # Runs unconditionally after the build so newly compiled objects are always
-    # persisted.  The key includes github.run_id so it is always unique — the
-    # restore step above finds the most recent matching entry via restore-keys.
+    # persisted.  algorithm + run_id makes the key unique per parallel job.
 
     - name: Save SCons cache
       if: inputs.scons-cache == 'true'
@@ -606,5 +608,5 @@ runs:
         key: >-
           scons-${{ inputs.godot-repo }}-${{ inputs.godot-version }}-${{
           steps.params.outputs.platform }}-${{ steps.params.outputs.arch }}-${{
-          inputs.precision }}-${{ runner.os }}-${{
+          inputs.precision }}-${{ runner.os }}-${{ inputs.algorithm }}-${{
           hashFiles(format('{0}/version.py', inputs.godot-source)) }}-${{ github.run_id }}
