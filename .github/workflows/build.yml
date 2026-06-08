@@ -222,11 +222,11 @@ jobs:
           echo "Downloading gdsdecomp from: $ASSET_URL"
 
           case "$ASSET_URL" in
-            *.tar.gz)  curl -fL "$ASSET_URL" -o gdsdecomp.tar.gz
+            *.tar.gz)  curl -fL --retry 5 --retry-delay 10 "$ASSET_URL" -o gdsdecomp.tar.gz
                        mkdir -p gdsdecomp && tar -xzf gdsdecomp.tar.gz -C gdsdecomp/ ;;
-            *.tar.xz)  curl -fL "$ASSET_URL" -o gdsdecomp.tar.xz
+            *.tar.xz)  curl -fL --retry 5 --retry-delay 10 "$ASSET_URL" -o gdsdecomp.tar.xz
                        mkdir -p gdsdecomp && tar -xJf gdsdecomp.tar.xz -C gdsdecomp/ ;;
-            *)         curl -fL "$ASSET_URL" -o gdsdecomp.zip
+            *)         curl -fL --retry 5 --retry-delay 10 "$ASSET_URL" -o gdsdecomp.zip
                        unzip -q gdsdecomp.zip -d gdsdecomp/ ;;
           esac
 
