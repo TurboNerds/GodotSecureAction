@@ -85,31 +85,10 @@ jobs:
           path: godot_secure_*.log
           if-no-files-found: warn
 
-      - name: Upload editor
+      - name: Upload binaries
         uses: actions/upload-artifact@v6
         with:
-          name: godot-editor-${{ matrix.cipher }}-${{ runner.os }}
-          path: godot-source/bin/*editor*
-          if-no-files-found: error
-
-      - name: Upload debug template
-        uses: actions/upload-artifact@v6
-        with:
-          name: godot-template-debug-${{ matrix.cipher }}-${{ runner.os }}
-          path: godot-source/bin/*template_debug*
-          if-no-files-found: error
-
-      - name: Upload release template
-        uses: actions/upload-artifact@v6
-        with:
-          name: godot-template-release-${{ matrix.cipher }}-${{ runner.os }}
-          path: godot-source/bin/*template_release*
-          if-no-files-found: error
-
-      - name: Upload OS bundle
-        uses: actions/upload-artifact@v6
-        with:
-          name: godot-bundle-${{ matrix.cipher }}-${{ runner.os }}
+          name: godot-secure-${{ matrix.cipher }}-${{ runner.os }}
           path: godot-source/bin/godot.*
           if-no-files-found: error
 
@@ -135,7 +114,7 @@ jobs:
       - name: Download AES Linux bundle
         uses: actions/download-artifact@v6
         with:
-          name: godot-bundle-aes-Linux
+          name: godot-secure-aes-Linux
           path: godot-bundle/
 
       - name: Make binaries executable
@@ -276,22 +255,22 @@ jobs:
         cipher: [aes, camellia, aria]
 
     steps:
-      - name: Download Linux bundle
+      - name: Download Linux binaries
         uses: actions/download-artifact@v6
         with:
-          name: godot-bundle-${{ matrix.cipher }}-Linux
+          name: godot-secure-${{ matrix.cipher }}-Linux
           path: release/linux/
 
-      - name: Download macOS bundle
+      - name: Download macOS binaries
         uses: actions/download-artifact@v6
         with:
-          name: godot-bundle-${{ matrix.cipher }}-macOS
+          name: godot-secure-${{ matrix.cipher }}-macOS
           path: release/macos/
 
-      - name: Download Windows bundle
+      - name: Download Windows binaries
         uses: actions/download-artifact@v6
         with:
-          name: godot-bundle-${{ matrix.cipher }}-Windows
+          name: godot-secure-${{ matrix.cipher }}-Windows
           path: release/windows/
 
       - name: Upload release package

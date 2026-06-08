@@ -112,36 +112,10 @@ jobs:
           path: godot_secure_*.log
           if-no-files-found: warn
 
-      # Individual artifacts — useful for downloading a single platform/target
-      # without fetching the full release zip.
-
-      - name: Upload editor
+      - name: Upload binaries
         uses: actions/upload-artifact@v6
         with:
-          name: editor-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-${{ runner.os }}
-          path: godot-source/bin/*editor*
-          if-no-files-found: error
-
-      - name: Upload debug template
-        uses: actions/upload-artifact@v6
-        with:
-          name: template-debug-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-${{ runner.os }}
-          path: godot-source/bin/*template_debug*
-          if-no-files-found: error
-
-      - name: Upload release template
-        uses: actions/upload-artifact@v6
-        with:
-          name: template-release-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-${{ runner.os }}
-          path: godot-source/bin/*template_release*
-          if-no-files-found: error
-
-      # Per-OS bundle — consumed by the package job to build the release zip.
-
-      - name: Upload OS bundle
-        uses: actions/upload-artifact@v6
-        with:
-          name: bundle-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-${{ runner.os }}
+          name: godot-secure-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-${{ runner.os }}
           path: godot-source/bin/godot.*
           if-no-files-found: error
 
@@ -164,7 +138,7 @@ jobs:
       - name: Download AES Linux bundle
         uses: actions/download-artifact@v6
         with:
-          name: bundle-${{ env.GODOT_VERSION }}-aes-Linux
+          name: godot-secure-${{ env.GODOT_VERSION }}-aes-Linux
           path: godot-bundle/
 
       - name: Make binaries executable
@@ -327,22 +301,22 @@ jobs:
         cipher: [aes, camellia, aria]
 
     steps:
-      - name: Download Linux bundle
+      - name: Download Linux binaries
         uses: actions/download-artifact@v6
         with:
-          name: bundle-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-Linux
+          name: godot-secure-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-Linux
           path: release/linux/
 
-      - name: Download macOS bundle
+      - name: Download macOS binaries
         uses: actions/download-artifact@v6
         with:
-          name: bundle-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-macOS
+          name: godot-secure-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-macOS
           path: release/macos/
 
-      - name: Download Windows bundle
+      - name: Download Windows binaries
         uses: actions/download-artifact@v6
         with:
-          name: bundle-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-Windows
+          name: godot-secure-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-Windows
           path: release/windows/
 
       - name: List release contents
