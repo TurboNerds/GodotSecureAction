@@ -62,7 +62,7 @@ jobs:
     steps:
       - name: Download Godot Secure script
         run: |
-          curl -fL \
+          curl -fL --retry 5 --retry-delay 10 \
             "https://github.com/emabrey/Godot-Secure/releases/download/v1.1.0-alpha/godot_secure.py" \
             -o godot_secure.py
 
@@ -175,7 +175,7 @@ jobs:
       - name: Resolve export template directory version
         id: tmpl-version
         run: |
-          curl -fsSL \
+          curl -fsSL --retry 5 --retry-delay 10 \
             "https://raw.githubusercontent.com/godotengine/godot/${{ env.GODOT_VERSION }}/version.py" \
             -o /tmp/godot_version.py
 
@@ -219,7 +219,7 @@ jobs:
       # Test 4: reverse engineering resistance
       - name: Download gdsdecomp
         run: |
-          RELEASE_JSON=$(curl -fsSL https://api.github.com/repos/bruvzg/gdsdecomp/releases/latest)
+          RELEASE_JSON=$(curl -fsSL --retry 5 --retry-delay 10 https://api.github.com/repos/bruvzg/gdsdecomp/releases/latest)
 
           echo "Available gdsdecomp release assets:"
           echo "$RELEASE_JSON" | python3 -c "

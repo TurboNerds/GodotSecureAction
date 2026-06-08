@@ -38,7 +38,7 @@ jobs:
     steps:
       - name: Download Godot Secure script
         run: |
-          curl -fL \
+          curl -fL --retry 5 --retry-delay 10 \
             "https://github.com/${{ env.GODOT_SECURE_REPO }}/releases/download/${{ env.GODOT_SECURE_TAG }}/godot_secure.py" \
             -o godot_secure.py
 
@@ -186,7 +186,7 @@ jobs:
 
       - name: Download gdsdecomp
         run: |
-          RELEASE_JSON=$(curl -fsSL https://api.github.com/repos/bruvzg/gdsdecomp/releases/latest)
+          RELEASE_JSON=$(curl -fsSL --retry 5 --retry-delay 10 https://api.github.com/repos/bruvzg/gdsdecomp/releases/latest)
 
           echo "Available gdsdecomp release assets:"
           echo "$RELEASE_JSON" | python3 -c "

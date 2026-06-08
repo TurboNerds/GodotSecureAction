@@ -272,7 +272,7 @@ runs:
         mkdir -p "$DEST"
 
         TAG_URL="https://github.com/${REPO}/archive/refs/tags/${REF}.tar.gz"
-        STATUS=$(curl -s -o /dev/null -w "%{http_code}" -L "$TAG_URL")
+        STATUS=$(curl -s --retry 3 --retry-delay 5 -o /dev/null -w "%{http_code}" -L "$TAG_URL")
 
         if [ "$STATUS" = "200" ]; then
           DOWNLOAD_URL="$TAG_URL"
@@ -283,7 +283,9 @@ runs:
         fi
 
         echo "Downloading Godot source from ${DOWNLOAD_URL}"
-        curl -fL "$DOWNLOAD_URL" | tar -xz --strip-components=1 -C "$DEST"
+        curl -fL --retry 5 --retry-delay 10 "$DOWNLOAD_URL" -o /tmp/godot-source.tar.gz
+        tar -xz --strip-components=1 -C "$DEST" -f /tmp/godot-source.tar.gz
+        rm /tmp/godot-source.tar.gz
         echo "Godot source downloaded to ${DEST}."
 
     # ── Save clean source cache (before any patching) ───────────────────────────
@@ -343,7 +345,7 @@ runs:
         URL="https://github.com/${REPO}/releases/download/${TAG}/godot_secure.py"
 
         echo "Downloading godot_secure.py from ${URL}"
-        curl -fL "$URL" -o "$GITHUB_WORKSPACE/godot_secure.py"
+        curl -fL --retry 5 --retry-delay 10 "$URL" -o "$GITHUB_WORKSPACE/godot_secure.py"
 
         SCRIPT_ABS="$GITHUB_WORKSPACE/godot_secure.py"
         echo "script-path=$SCRIPT_ABS" >> "$GITHUB_OUTPUT"
