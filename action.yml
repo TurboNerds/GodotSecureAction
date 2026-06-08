@@ -380,7 +380,8 @@ runs:
           libxkbcommon-dev \
           libdecor-0-dev \
           pkg-config \
-          yasm
+          yasm \
+          gettext
 
     - name: Install macOS build dependencies
       if: runner.os == 'macOS'
