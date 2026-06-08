@@ -6,17 +6,20 @@ Verifies the magic header of a Godot PCK file produced by a Godot Secure
 patched build.
 
 Usage:
-    python check_magic_header.py <path/to/file.pck> [BASE_TAG]
+    python check_magic_header.py <path/to/file.pck> [SECURITY_TOKEN]
 
-    BASE_TAG  Optional 4-character ASCII tag passed to the setup job
-              (e.g. "BXXY"). When provided the script verifies the PCK
-              header matches this exact value rather than just checking
-              that it is not the default Godot magic.
+    SECURITY_TOKEN  Optional 64-character hex security token produced by
+                    `godot_secure.py --mode generate`.  When provided the
+                    script derives the expected base-tag from the token
+                    (same algorithm as godot_secure.py) and verifies the
+                    PCK header matches exactly, catching any cross-OS
+                    parameter synchronization failures.
 
 Exit codes:
     0 — header matches expected value (or is any non-default value when
-        no BASE_TAG is given)
-    1 — header is wrong (default Godot value, or does not match BASE_TAG)
+        no SECURITY_TOKEN is given)
+    1 — header is wrong (default Godot value, or does not match the
+        derived base-tag)
     2 — bad arguments or file could not be read
 """
 
@@ -31,7 +34,17 @@ def tag_to_magic(tag: str) -> int:
     return struct.unpack("<I", tag.encode("ascii"))[0]
 
 
-def check(pck_path: str, expected_tag: str | None) -> int:
+def derive_base_tag(token_hex: str) -> str:
+    """Derive the base-tag from a 64-char hex security token.
+
+    Mirrors the derive_tags_from_token() function in godot_secure.py:
+    bytes 0-3 of the token map to base_tag via chr(ord('A') + (b % 26)).
+    """
+    token_bytes = bytes.fromhex(token_hex)
+    return ''.join(chr(ord('A') + (b % 26)) for b in token_bytes[0:4])
+
+
+def check(pck_path: str, security_token: str | None) -> int:
     try:
         with open(pck_path, "rb") as fh:
             raw = fh.read(4)
@@ -45,12 +58,13 @@ def check(pck_path: str, expected_tag: str | None) -> int:
 
     actual = struct.unpack("<I", raw)[0]
 
-    if expected_tag is not None:
+    if security_token is not None:
+        expected_tag = derive_base_tag(security_token)
         expected = tag_to_magic(expected_tag)
         if actual == expected:
             print(
                 f"✓  PASS — PCK magic 0x{actual:08X} matches expected "
-                f"base-tag '{expected_tag}'."
+                f"base-tag '{expected_tag}' (derived from security token)."
             )
             return 0
         elif actual == DEFAULT_GODOT_MAGIC:
@@ -61,12 +75,12 @@ def check(pck_path: str, expected_tag: str | None) -> int:
         else:
             print(
                 f"✗  FAIL — PCK magic 0x{actual:08X} does not match expected "
-                f"base-tag '{expected_tag}' (0x{expected:08X}). "
+                f"base-tag '{expected_tag}' (0x{expected:08X}, derived from security token). "
                 f"Cross-OS parameter synchronization may have failed."
             )
         return 1
 
-    # No expected tag — just verify it is not the default.
+    # No token provided — just verify it is not the default.
     if actual == DEFAULT_GODOT_MAGIC:
         print(
             f"✗  FAIL — PCK has the default Godot magic (0x{actual:08X}). "
@@ -83,11 +97,11 @@ def check(pck_path: str, expected_tag: str | None) -> int:
 
 if __name__ == "__main__":
     if len(sys.argv) not in (2, 3):
-        print(f"Usage: {sys.argv[0]} <pck_file> [BASE_TAG]")
+        print(f"Usage: {sys.argv[0]} <pck_file> [SECURITY_TOKEN]")
         sys.exit(2)
     pck = sys.argv[1]
-    tag = sys.argv[2] if len(sys.argv) == 3 else None
-    if tag is not None and len(tag) != 4:
-        print(f"✗  BASE_TAG must be exactly 4 characters, got {len(tag)!r}.")
+    token = sys.argv[2] if len(sys.argv) == 3 else None
+    if token is not None and len(token) != 64:
+        print(f"✗  SECURITY_TOKEN must be a 64-character hex string, got {len(token)} chars.")
         sys.exit(2)
-    sys.exit(check(pck, tag))
+    sys.exit(check(pck, token))

@@ -54,8 +54,6 @@ jobs:
     runs-on: ubuntu-latest
 
     outputs:
-      base-tag:       ${{ steps.gen.outputs.base-tag }}
-      enc-tag:        ${{ steps.gen.outputs.enc-tag }}
       security-token: ${{ steps.gen.outputs.security-token }}
       kdf-formula:    ${{ steps.gen.outputs.kdf-formula }}
 
@@ -63,7 +61,7 @@ jobs:
       - name: Download Godot Secure script
         run: |
           curl -fL --retry 5 --retry-delay 10 \
-            "https://github.com/emabrey/Godot-Secure/releases/download/v1.1.1-alpha/godot_secure.py" \
+            "https://github.com/emabrey/Godot-Secure/releases/download/v1.2.0-alpha/godot_secure.py" \
             -o godot_secure.py
 
       - name: Generate security parameters
@@ -91,8 +89,6 @@ jobs:
           godot-version:  ${{ env.GODOT_VERSION }}
           algorithm:      ${{ matrix.cipher }}
           encryption-key: ${{ secrets.GODOT_ENCRYPTION_KEY }}
-          base-tag:       ${{ needs.setup.outputs.base-tag }}
-          enc-tag:        ${{ needs.setup.outputs.enc-tag }}
           security-token: ${{ needs.setup.outputs.security-token }}
           kdf-formula:    ${{ needs.setup.outputs.kdf-formula }}
           target:         all        # editor + template_debug + template_release
@@ -214,7 +210,7 @@ jobs:
 
       # Test 3: magic header
       - name: Verify PCK magic header matches expected base-tag
-        run: python3 test/scripts/check_magic_header.py test/project/exported/test.pck "${{ needs.setup.outputs.base-tag }}"
+        run: python3 test/scripts/check_magic_header.py test/project/exported/test.pck "${{ needs.setup.outputs.security-token }}"
 
       # Test 4: reverse engineering resistance
       - name: Download gdsdecomp

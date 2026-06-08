@@ -41,7 +41,7 @@ env:
   GODOT_VERSION:      ${{ github.event.inputs.godot-version || '4.6-stable' }}
   GODOT_REPO:         'godotengine/godot'
   GODOT_SECURE_REPO:  'emabrey/Godot-Secure'
-  GODOT_SECURE_TAG:   'v1.1.1-alpha'
+  GODOT_SECURE_TAG:   'v1.2.0-alpha'
 
 jobs:
 
@@ -56,8 +56,6 @@ jobs:
     runs-on: ubuntu-latest
 
     outputs:
-      base-tag:       ${{ steps.gen.outputs.base-tag }}
-      enc-tag:        ${{ steps.gen.outputs.enc-tag }}
       security-token: ${{ steps.gen.outputs.security-token }}
       kdf-formula:    ${{ steps.gen.outputs.kdf-formula }}
 
@@ -96,8 +94,6 @@ jobs:
           godot-secure-tag:  ${{ env.GODOT_SECURE_TAG }}
           algorithm:         ${{ matrix.cipher }}
           encryption-key:    ${{ secrets.GODOT_ENCRYPTION_KEY }}
-          base-tag:          ${{ needs.setup.outputs.base-tag }}
-          enc-tag:           ${{ needs.setup.outputs.enc-tag }}
           security-token:    ${{ needs.setup.outputs.security-token }}
           kdf-formula:       ${{ needs.setup.outputs.kdf-formula }}
           target:            all
@@ -220,7 +216,7 @@ jobs:
       # ── Test 3: magic header ──────────────────────────────────────────────────
 
       - name: Verify PCK magic header matches expected base-tag
-        run: python3 test/scripts/check_magic_header.py test/project/exported/test.pck "${{ needs.setup.outputs.base-tag }}"
+        run: python3 test/scripts/check_magic_header.py test/project/exported/test.pck "${{ needs.setup.outputs.security-token }}"
 
       # ── Test 4: reverse engineering resistance ────────────────────────────────
 

@@ -47,7 +47,7 @@ inputs:
 
   godot-secure-tag:
     description: Release tag to download the Godot Secure artifact from.
-    default: 'v1.1.1-alpha'
+    default: 'v1.2.0-alpha'
 
   algorithm:
     description: >
@@ -67,27 +67,12 @@ inputs:
       in the log artifact) — useful for one-off test builds.
     default: ''
 
-  base-tag:
-    description: >
-      4-character uppercase ASCII tag for the pack file magic header
-      (PACK_HEADER_MAGIC). When omitted, a random tag is generated per job.
-      For multi-OS matrix builds, generate this once in a setup job and pass
-      the same value to every build job — all platform binaries must share
-      identical magic headers or they cannot read each other's PCK files.
-    default: ''
-
-  enc-tag:
-    description: >
-      4-character uppercase ASCII tag for the encrypted file magic header
-      (ENCRYPTED_HEADER_MAGIC). Same cross-OS coordination requirement as
-      base-tag.
-    default: ''
-
   security-token:
     description: >
       64-character hex security token (32 bytes) embedded in the compiled
-      binary and mixed into the key derivation formula at pack open/write
-      time. Same cross-OS coordination requirement as base-tag.
+      binary and used to derive the pack magic headers and key derivation
+      formula. For multi-OS matrix builds, generate this once in a setup
+      job and pass the same value to every build job.
     default: ''
 
   kdf-formula:
@@ -355,8 +340,6 @@ runs:
       shell: bash
       env:
         SCRIPT_AES256_ENCRYPTION_KEY: ${{ inputs.encryption-key }}
-        GS_BASE_TAG:    ${{ inputs.base-tag }}
-        GS_ENC_TAG:     ${{ inputs.enc-tag }}
         GS_TOKEN:       ${{ inputs.security-token }}
         GS_KDF_FORMULA: ${{ inputs.kdf-formula }}
       run: |
@@ -373,8 +356,6 @@ runs:
           --non-interactive
         )
 
-        [ -n "$GS_BASE_TAG" ]    && ARGS+=(--base-tag    "$GS_BASE_TAG")
-        [ -n "$GS_ENC_TAG" ]     && ARGS+=(--enc-tag     "$GS_ENC_TAG")
         [ -n "$GS_TOKEN" ]       && ARGS+=(--token       "$GS_TOKEN")
 
         if [ -n "$GS_KDF_FORMULA" ]; then
