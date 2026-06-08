@@ -478,19 +478,30 @@ runs:
     # Runs after params so the cache key uses the resolved platform and arch
     # rather than the raw (possibly empty) input values.
 
+    # ── SCons cache: restore then always save ──────────────────────────────────
+    # actions/cache (combined) skips the post-job save when the exact key hits,
+    # so any objects compiled in that run are lost.  We split restore and save:
+    #   • restore uses restore-keys so we always pick up the most recent cache
+    #   • save appends github.run_id so the key never matches exactly, forcing
+    #     a fresh save after every build that captures incremental changes
+    # GitHub evicts LRU entries automatically once the 10 GB repo limit is hit,
+    # so the growing list of per-run entries stays bounded in practice.
+
     - name: Restore SCons cache
       if: inputs.scons-cache == 'true'
-      uses: actions/cache@v5
+      id: scons-cache-restore
+      uses: actions/cache/restore@v5
       with:
         path: |
           ${{ inputs.scons-cache-path }}
           ${{ inputs.godot-source }}/.sconsign.dblite
         key: >-
-          scons-${{ inputs.godot-repo }}-${{
-          inputs.godot-version }}-${{ steps.params.outputs.platform }}-${{
-          steps.params.outputs.arch }}-${{ inputs.precision }}-${{ runner.os }}-${{
-          hashFiles(format('{0}/version.py', inputs.godot-source)) }}
+          scons-${{ inputs.godot-repo }}-${{ inputs.godot-version }}-${{
+          steps.params.outputs.platform }}-${{ steps.params.outputs.arch }}-${{
+          inputs.precision }}-${{ runner.os }}-${{
+          hashFiles(format('{0}/version.py', inputs.godot-source)) }}-${{ github.run_id }}
         restore-keys: |
+          scons-${{ inputs.godot-repo }}-${{ inputs.godot-version }}-${{ steps.params.outputs.platform }}-${{ steps.params.outputs.arch }}-${{ inputs.precision }}-${{ runner.os }}-${{ hashFiles(format('{0}/version.py', inputs.godot-source)) }}-
           scons-${{ inputs.godot-repo }}-${{ inputs.godot-version }}-${{ steps.params.outputs.platform }}-${{ steps.params.outputs.arch }}-${{ inputs.precision }}-${{ runner.os }}-
           scons-${{ inputs.godot-repo }}-${{ inputs.godot-version }}-${{ steps.params.outputs.platform }}-${{ steps.params.outputs.arch }}-${{ runner.os }}-
 
@@ -579,3 +590,21 @@ runs:
         [ -n "$DEBUG_PATH"    ] && echo "  template_debug  : $DEBUG_PATH"
         [ -n "$RELEASE_PATH"  ] && echo "  template_release: $RELEASE_PATH"
         echo "───────────────────────────────────────────────────────────────"
+
+    # ── Save SCons cache ────────────────────────────────────────────────────────
+    # Runs unconditionally after the build so newly compiled objects are always
+    # persisted.  The key includes github.run_id so it is always unique — the
+    # restore step above finds the most recent matching entry via restore-keys.
+
+    - name: Save SCons cache
+      if: inputs.scons-cache == 'true'
+      uses: actions/cache/save@v5
+      with:
+        path: |
+          ${{ inputs.scons-cache-path }}
+          ${{ inputs.godot-source }}/.sconsign.dblite
+        key: >-
+          scons-${{ inputs.godot-repo }}-${{ inputs.godot-version }}-${{
+          steps.params.outputs.platform }}-${{ steps.params.outputs.arch }}-${{
+          inputs.precision }}-${{ runner.os }}-${{
+          hashFiles(format('{0}/version.py', inputs.godot-source)) }}-${{ github.run_id }}
