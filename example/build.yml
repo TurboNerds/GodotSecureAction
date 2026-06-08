@@ -63,7 +63,7 @@ jobs:
       - name: Download Godot Secure script
         run: |
           curl -fL --retry 5 --retry-delay 10 \
-            "https://github.com/emabrey/Godot-Secure/releases/download/v1.1.0-alpha/godot_secure.py" \
+            "https://github.com/emabrey/Godot-Secure/releases/download/v1.1.1-alpha/godot_secure.py" \
             -o godot_secure.py
 
       - name: Generate security parameters
