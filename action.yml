@@ -67,12 +67,6 @@ inputs:
       in the log artifact) — useful for one-off test builds.
     default: ''
 
-  advanced-kdf:
-    description: >
-      Enable the advanced key derivation function in Godot Secure for
-      additional key hardening. Ignored when kdf-formula is provided.
-    default: 'true'
-
   base-tag:
     description: >
       4-character uppercase ASCII tag for the pack file magic header
@@ -99,10 +93,11 @@ inputs:
   kdf-formula:
     description: >
       Verbatim C statement for the per-byte key derivation inside the token
-      XOR loop. When provided this overrides --advanced-kdf and the default
-      XOR formula. Must be identical across every OS build in a distribution
-      or PCK decryption will produce garbage on cross-platform exports.
-      Generate once in a setup job and pass the same value to all build jobs.
+      XOR loop. When provided, this formula is used verbatim. When omitted,
+      a random advanced key derivation formula is generated automatically.
+      Must be identical across every OS build in a distribution or PCK
+      decryption will produce garbage on cross-platform exports. Generate
+      once in a setup job and pass the same value to all build jobs.
     default: ''
 
   # ── Build ─────────────────────────────────────────────────────────────────────
@@ -378,17 +373,13 @@ runs:
           --non-interactive
         )
 
-        # Pass pre-generated cross-OS values when provided; fall back to
-        # per-job random generation when inputs are empty (single-OS builds).
         [ -n "$GS_BASE_TAG" ]    && ARGS+=(--base-tag    "$GS_BASE_TAG")
         [ -n "$GS_ENC_TAG" ]     && ARGS+=(--enc-tag     "$GS_ENC_TAG")
         [ -n "$GS_TOKEN" ]       && ARGS+=(--token       "$GS_TOKEN")
 
         if [ -n "$GS_KDF_FORMULA" ]; then
-          # Explicit formula supplied by setup job — takes precedence.
           ARGS+=(--kdf-formula "$GS_KDF_FORMULA")
-        elif [ "${{ inputs.advanced-kdf }}" = "true" ]; then
-          # No shared formula: use advanced-kdf (safe for single-OS builds only).
+        else
           ARGS+=(--advanced-kdf)
         fi
 
