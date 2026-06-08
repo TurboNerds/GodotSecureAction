@@ -200,8 +200,8 @@ jobs:
 
       # ── Test 3: magic header check ─────────────────────────────────────────
 
-      - name: Verify PCK magic header is not default Godot magic
-        run: python3 test/scripts/check_magic_header.py test/project/exported/test.pck
+      - name: Verify PCK magic header matches expected base-tag
+        run: python3 test/scripts/check_magic_header.py test/project/exported/test.pck "${{ needs.setup.outputs.base-tag }}"
 
       # ── Test 4: reverse engineering resistance ─────────────────────────────
 
