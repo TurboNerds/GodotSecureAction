@@ -1,9 +1,8 @@
 # GodotSecureAction
 
-A GitHub Action that builds a cryptographically hardened Godot Engine from source.
-It downloads the Godot Engine C++ source, applies the [Godot Secure](https://github.com/emabrey/Godot-Secure) patch to replace the default pack encryption with a uniquely keyed cipher, and compiles the editor and export templates — all in a single step.
+A GitHub Action that builds Godot Engine from source with custom pack encryption. It downloads the Godot Engine C++ source, applies the [Godot Secure](https://github.com/emabrey/Godot-Secure) patch to replace the default pack encryption with a uniquely keyed cipher, then compiles the editor and export templates.
 
-The produced binaries are drop-in replacements for the official Godot editor and export templates and work with any Godot 4.x project.
+The resulting binaries replace the official Godot editor and export templates and work with any Godot 4.x project.
 
 ---
 
@@ -115,22 +114,21 @@ All three use a 256-bit key and accept the same `SCRIPT_AES256_ENCRYPTION_KEY` e
 
 | Input | Default | Description |
 |-------|---------|-------------|
-| `godot-version` | `4.6-stable` | Godot version tag or branch (e.g. `4.6-stable`, `master`). Downloaded and cached automatically. Leave empty only if the source is already in the workspace. |
+| `godot-version` | `4.6-stable` | Godot version tag or branch (e.g. `4.6-stable`, `master`). Downloaded fresh each run. Leave empty only if the source is already in the workspace. |
 | `godot-repo` | `godotengine/godot` | GitHub repository to download Godot source from. |
 | `godot-source` | `godot-source` | Path where the Godot source root is, or will be downloaded to, relative to the workspace. |
-| `cache-godot-source` | `true` | Cache the downloaded Godot source between runs. The cached copy is always the clean unpatched source — safe to share across cipher combinations and concurrent jobs. |
 
 ### Godot Secure patch
 
 | Input | Default | Description |
 |-------|---------|-------------|
-| `godot-secure-repo` | `emabrey/Godot-Secure` | GitHub repository to download the Godot Secure script from. Leave empty to skip patching. |
+| `godot-secure-repo` | `emabrey/Godot-Secure` | GitHub repository to download the Godot Secure script from. Required — the action fails if this is empty. |
 | `godot-secure-tag` | `v1.4.0` | Release tag to download `godot_secure.py` from. |
 | `algorithm` | `aes` | Cipher: `aes`, `camellia`, or `aria`. Every platform binary in a distribution must use the same cipher. |
-| `encryption-key` | *(empty — random)* | 64-character hex encryption key. Pass your repository secret here. When omitted a random key is generated and recorded in the log artifact — useful for one-off test builds. |
-| `security-token` | *(random per job)* | 64-character hex security token (32 bytes). The token is the single shared secret for a build: the pack magic headers and KDF formula are derived from it deterministically via HKDF (RFC 5869) and byte-mapping. **Must be identical across all OS builds** — generate once in a `setup` job and pass via `needs.setup.outputs.security-token`. When omitted a random token is generated per job, which will cause cross-platform PCK files to fail. |
+| `encryption-key` | *(empty — random)* | 64-character hex encryption key. Pass your repository secret here. When omitted, a random key is generated and recorded in the log artifact, which is handy for one-off test builds. |
+| `security-token` | *(random per job)* | 64-character hex security token (32 bytes). The token is the single shared secret for a build: the pack magic headers and KDF formula are derived from it deterministically via HKDF (RFC 5869) and byte-mapping. **Must be identical across all OS builds.** Generate it once in a `setup` job and pass it via `needs.setup.outputs.security-token`. When omitted, a random token is generated per job, which will cause cross-platform PCK files to fail. |
 
-> **Multi-OS builds:** if `security-token` differs between the Linux, macOS, and Windows jobs, the editor on one platform will be unable to open PCK files exported on another. Always use a `setup` job to generate the token once and pass it to all build jobs — see the examples below.
+> **Multi-OS builds:** if `security-token` differs between the Linux, macOS, and Windows jobs, the editor on one platform will be unable to open PCK files exported on another. Always use a `setup` job to generate the token once and pass it to all build jobs; see the examples below.
 
 ### Build
 
@@ -140,9 +138,9 @@ All three use a 256-bit key and accept the same `SCRIPT_AES256_ENCRYPTION_KEY` e
 | `platform` | *(auto)* | SCons platform name. Auto-detected from the runner OS when omitted. |
 | `arch` | *(auto)* | Target architecture (e.g. `x86_64`, `arm64`). Auto-detected when omitted. |
 | `precision` | `single` | Floating-point precision: `single` or `double`. |
-| `lto` | `auto` | Link-time optimisation: `none`, `auto`, or `full`. `auto` skips LTO on editor/debug builds and enables thin LTO on release templates — the best default for most workflows. Use `full` when building release distributions. |
+| `lto` | `auto` | Link-time optimisation: `none`, `auto`, or `full`. `auto` skips LTO on editor/debug builds and enables thin LTO on release templates. Use `full` when building release distributions. |
 | `extra-scons-args` | *(empty)* | Additional SCons arguments appended to every build invocation. Example: `use_llvm=yes linker=mold`. |
-| `scons-cache` | `true` | Cache compiled SCons objects between runs. A warm cache reduces build time by 60–90 %. |
+| `scons-cache` | `true` | Cache compiled SCons objects between runs. A warm cache reduces build time substantially on incremental runs. |
 | `scons-cache-path` | `.scons-cache` | Directory used for the SCons object cache. |
 | `scons-cache-limit` | `1` | Maximum SCons cache size in GB. Godot prunes least-recently-used objects at build end to stay under the limit. `0` means unlimited. |
 | `python-version` | `3.x` | Python version used to run SCons and Godot Secure. |
@@ -271,55 +269,11 @@ jobs:
     target:           editor
 ```
 
-### Build all three ciphers at once
-
-Only needed when you want to support multiple cipher options for different distribution contexts (e.g. one build for general users and one for a regulatory region). A single `setup` job generates the security token and all 9 matrix jobs share it — the magic headers and KDF formula only need to be consistent across the 3 OSes within each cipher, which this guarantees automatically.
-
-```yaml
-jobs:
-  setup:
-    name: Generate shared security token
-    runs-on: ubuntu-latest
-    outputs:
-      security-token: ${{ steps.gen.outputs.security-token }}
-    steps:
-      - name: Download Godot Secure script
-        run: |
-          curl -fL --retry 5 --retry-delay 10 \
-            "https://github.com/emabrey/Godot-Secure/releases/download/v1.4.0/godot_secure.py" \
-            -o godot_secure.py
-      - name: Generate security token
-        id: gen
-        run: python3 godot_secure.py --mode generate --non-interactive
-
-  build:
-    runs-on: ${{ matrix.os }}
-    needs: [setup]
-    strategy:
-      matrix:
-        os:     [ubuntu-latest, macos-latest, windows-latest]
-        cipher: [aes, camellia, aria]
-    steps:
-      - name: Build Godot Secure
-        id: godot-secure
-        uses: emabrey/GodotSecureAction@v1
-        with:
-          godot-version:  '4.6-stable'
-          algorithm:      ${{ matrix.cipher }}
-          encryption-key: ${{ secrets.GODOT_ENCRYPTION_KEY }}
-          security-token: ${{ needs.setup.outputs.security-token }}
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: godot-secure-${{ steps.godot-secure.outputs.algorithm }}-${{ runner.os }}
-          path: godot-source/bin/godot.*
-```
-
 ---
 
 ## Provided workflows
 
-This repository ships two workflows used for developing and releasing GodotSecureAction itself. They are not needed for typical project use — the quick start workflow above is all most projects need.
+This repository ships two workflows used for developing and releasing GodotSecureAction itself. They are not needed for typical project use; the quick start workflow above covers most projects.
 
 ### `build.yml` — CI on every push to `main`
 
@@ -340,20 +294,18 @@ Triggered by a tag push (`v*`) or manually from the Actions tab. Produces one zi
 ## How it works
 
 1. **Sets up Python** and installs SCons via pip.
-2. **Restores the Godot source cache** (read-only). On a cache hit the download is skipped. The cached copy is always the clean unpatched source — safe to share across jobs that apply different ciphers.
-3. **Downloads the Godot Engine source** as a tarball from GitHub when `godot-version` is set and no cached copy exists. Tag URLs are tried first; branch URLs are used as a fallback.
-4. **Saves the clean source cache** immediately after download and before any patching.
-5. **Downloads `godot_secure.py`** from the configured release tag.
-6. **Applies the Godot Secure patch** with the chosen `algorithm`. The encryption key is masked in logs and passed exclusively via the `SCRIPT_AES256_ENCRYPTION_KEY` environment variable. All security parameters are derived deterministically from the single security token:
+2. **Downloads the Godot Engine source** as a tarball from GitHub when `godot-version` is set. Tag URLs are tried first, with branch URLs as a fallback. The source is fetched fresh each run rather than cached, so a moving branch is never served stale and the repo's cache budget stays reserved for compiled objects.
+3. **Downloads `godot_secure.py`** from the configured release tag.
+4. **Applies the Godot Secure patch** with the chosen `algorithm`. The encryption key is masked in logs and passed exclusively via the `SCRIPT_AES256_ENCRYPTION_KEY` environment variable. All security parameters are derived deterministically from the single security token:
    - **Pack magic headers** — derived via `chr(ord('A') + (byte % 26))` applied to token bytes 0–3 (base-tag) and 4–7 (enc-tag).
    - **KDF formula** — derived via HKDF-SHA256 (RFC 5869) with domain label `godot-secure-kdf-formula-v1`, producing a unique multi-layer bitwise expression mixing the key and token at pack open/write time.
-7. **Installs system dependencies** for the runner OS:
+5. **Installs system dependencies** for the runner OS:
    - **Linux** — X11, OpenGL, audio, Wayland, and input headers via `apt-get`
    - **macOS** — MoltenVK (Vulkan) and yasm via Homebrew
    - **Windows** — D3D12 Agility SDK via the Godot-bundled install script
-8. **Restores the SCons object cache** to reuse compiled objects from previous runs (when `scons-cache` is `true`).
-9. **Runs SCons** for each requested target across all available CPU cores, with `--implicit-cache` to skip unchanged dependency scans across runs.
-10. **Locates the compiled binaries** under `bin/` and writes their absolute paths to the step outputs.
+6. **Restores the SCons object cache** to reuse compiled objects from previous runs (when `scons-cache` is `true`).
+7. **Runs SCons** for each requested target across all available CPU cores, with `--implicit-cache` to skip unchanged dependency scans across runs.
+8. **Locates the compiled binaries** under `bin/` and writes their absolute paths to the step outputs.
 
 ---
 
@@ -367,7 +319,7 @@ Triggered by a tag push (`v*`) or manually from the Actions tab. Produces one zi
 
 ## Support
 
-GodotSecureAction is free and open-source. If you find it useful, consider supporting its development:
+GodotSecureAction is free and open-source. If it saves you time, a tip is always appreciated:
 
 <a href="https://ko-fi.com/emabrey" target="_blank">
   <img height="36" src="https://storage.ko-fi.com/cdn/kofi5.png?v=6" border="0" alt="Buy Me a Coffee at ko-fi.com" />

@@ -1,12 +1,12 @@
 name: GodotSecureAction
 
 description: >
-  Builds a cryptographically hardened Godot Engine from source.
+  Builds Godot Engine from source with custom pack encryption.
   Downloads the Godot Engine C++ source, applies the Godot Secure patch to
   replace the default AES-256 pack encryption with a uniquely keyed build
   using AES-256, Camellia-256, or ARIA-256, then compiles the editor and/or
-  export templates. Produced binaries are drop-in replacements for the official
-  Godot editor and export templates and work with any Godot project.
+  export templates. The resulting binaries replace the official Godot editor
+  and export templates and work with any Godot project.
 
 inputs:
 
@@ -30,19 +30,12 @@ inputs:
       downloaded here automatically.
     default: 'godot-source'
 
-  cache-godot-source:
-    description: >
-      Cache the downloaded Godot source between runs, keyed by godot-repo and
-      godot-version. The cached copy is always the clean (unpatched) source so
-      it is safe to share across cipher combinations.
-    default: 'true'
-
   # ── Godot Secure patch ────────────────────────────────────────────────────────
 
   godot-secure-repo:
     description: >
       GitHub repository to download the Godot Secure release artifact from.
-      Leave empty to skip downloading the script.
+      Required — the action fails with a clear error if this is empty.
     default: 'emabrey/Godot-Secure'
 
   godot-secure-tag:
@@ -173,7 +166,7 @@ runs:
         if [ -z "${{ inputs.godot-secure-tag }}" ]; then
           echo "::error::godot-secure-tag is required. " \
                "Set it to the release tag to download godot_secure.py from " \
-               "(default: v1.0.2-alpha)."
+               "(default: v1.4.0)."
           ERRORS=$((ERRORS + 1))
         fi
 
@@ -215,26 +208,16 @@ runs:
       shell: bash
       run: pip install scons
 
-    # ── Godot source: restore cache (read-only) ─────────────────────────────────
-    # actions/cache/restore never writes back at job end, so the cached copy
-    # always remains the clean (unpatched) source regardless of which cipher the
-    # calling job applies. The explicit save step below runs before patching.
-
-    - name: Restore Godot source cache
-      if: inputs.godot-version != '' && inputs.cache-godot-source == 'true'
-      id: cache-source
-      uses: actions/cache/restore@v5
-      with:
-        path: ${{ inputs.godot-source }}
-        key: godot-source-${{ inputs.godot-repo }}-${{ inputs.godot-version }}
-
     # ── Download Godot source ───────────────────────────────────────────────────
+    # Always fetched fresh. The download is cheap (~15-40s) and the source tree
+    # is not cached: caching it would only save that download while competing for
+    # the repo's shared cache budget against the SCons object cache — which saves
+    # minutes per build and is far more valuable per MB. Fetching fresh also
+    # avoids serving a stale snapshot when godot-version points to a moving
+    # branch (a branch HEAD advances, but a version-keyed cache would not).
 
     - name: Download Godot source
-      if: >-
-        inputs.godot-version != '' &&
-        (inputs.cache-godot-source != 'true' ||
-         steps.cache-source.outputs.cache-hit != 'true')
+      if: inputs.godot-version != ''
       shell: bash
       run: |
         REF="${{ inputs.godot-version }}"
@@ -259,34 +242,6 @@ runs:
         tar -xz --strip-components=1 -C "$DEST" -f /tmp/godot-source.tar.gz
         rm /tmp/godot-source.tar.gz
         echo "Godot source downloaded to ${DEST}."
-
-    # ── Save clean source cache (before any patching) ───────────────────────────
-    # Checks whether a concurrent job already saved the cache to avoid duplicate-
-    # save warnings, then saves the unmodified source immediately — before
-    # Godot Secure modifies any files.
-
-    - name: Check if source cache was saved by a concurrent job
-      id: cache-source-check
-      if: >-
-        inputs.godot-version != '' &&
-        inputs.cache-godot-source == 'true' &&
-        steps.cache-source.outputs.cache-hit != 'true'
-      uses: actions/cache/restore@v5
-      with:
-        path: ${{ inputs.godot-source }}
-        key: godot-source-${{ inputs.godot-repo }}-${{ inputs.godot-version }}
-        lookup-only: true
-
-    - name: Save Godot source cache
-      if: >-
-        inputs.godot-version != '' &&
-        inputs.cache-godot-source == 'true' &&
-        steps.cache-source.outputs.cache-hit != 'true' &&
-        steps.cache-source-check.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v5
-      with:
-        path: ${{ inputs.godot-source }}
-        key: godot-source-${{ inputs.godot-repo }}-${{ inputs.godot-version }}
 
     # ── Resolve and validate the source path ────────────────────────────────────
 

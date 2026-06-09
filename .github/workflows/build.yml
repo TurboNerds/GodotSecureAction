@@ -22,11 +22,13 @@ permissions:
 
 jobs:
 
-  # ── Setup: generate shared security parameters ────────────────────────────────
-  # All 9 build jobs must embed identical magic headers, security token, and KDF
-  # formula or cross-platform PCK files will fail to open (wrong magic) or
-  # decrypt to garbage (wrong token/formula). Generate all four values once here
-  # and pass them to every build job via needs outputs.
+  # ── Setup: generate the shared security token ─────────────────────────────────
+  # Every build job must embed the same security token. The pack magic headers
+  # and KDF formula are derived from it deterministically inside godot_secure.py,
+  # so the token is the only value generated here. Generate it once and pass it
+  # to every build job via needs outputs; if the token differed between jobs,
+  # cross-platform PCK files would fail to open (mismatched magic header) or
+  # decrypt to garbage (mismatched KDF formula).
 
   setup:
     name: Generate shared security parameters
@@ -42,7 +44,7 @@ jobs:
             "https://github.com/${{ env.GODOT_SECURE_REPO }}/releases/download/${{ env.GODOT_SECURE_TAG }}/godot_secure.py" \
             -o godot_secure.py
 
-      - name: Generate security parameters
+      - name: Generate security token
         id: gen
         run: python3 godot_secure.py --mode generate --non-interactive
 
