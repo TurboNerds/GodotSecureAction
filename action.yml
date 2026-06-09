@@ -47,7 +47,7 @@ inputs:
 
   godot-secure-tag:
     description: Release tag to download the Godot Secure artifact from.
-    default: 'v1.3.0-alpha'
+    default: 'v1.4.0'
 
   algorithm:
     description: >

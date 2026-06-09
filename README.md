@@ -47,7 +47,7 @@ jobs:
       - name: Download Godot Secure script
         run: |
           curl -fL --retry 5 --retry-delay 10 \
-            "https://github.com/emabrey/Godot-Secure/releases/download/v1.3.0-alpha/godot_secure.py" \
+            "https://github.com/emabrey/Godot-Secure/releases/download/v1.4.0/godot_secure.py" \
             -o godot_secure.py
       - name: Generate security token
         id: gen
@@ -125,7 +125,7 @@ All three use a 256-bit key and accept the same `SCRIPT_AES256_ENCRYPTION_KEY` e
 | Input | Default | Description |
 |-------|---------|-------------|
 | `godot-secure-repo` | `emabrey/Godot-Secure` | GitHub repository to download the Godot Secure script from. Leave empty to skip patching. |
-| `godot-secure-tag` | `v1.3.0-alpha` | Release tag to download `godot_secure.py` from. |
+| `godot-secure-tag` | `v1.4.0` | Release tag to download `godot_secure.py` from. |
 | `algorithm` | `aes` | Cipher: `aes`, `camellia`, or `aria`. Every platform binary in a distribution must use the same cipher. |
 | `encryption-key` | *(empty — random)* | 64-character hex encryption key. Pass your repository secret here. When omitted a random key is generated and recorded in the log artifact — useful for one-off test builds. |
 | `security-token` | *(random per job)* | 64-character hex security token (32 bytes). The token is the single shared secret for a build: the pack magic headers and KDF formula are derived from it deterministically via HKDF (RFC 5869) and byte-mapping. **Must be identical across all OS builds** — generate once in a `setup` job and pass via `needs.setup.outputs.security-token`. When omitted a random token is generated per job, which will cause cross-platform PCK files to fail. |
@@ -190,7 +190,7 @@ jobs:
       - name: Download Godot Secure script
         run: |
           curl -fL --retry 5 --retry-delay 10 \
-            "https://github.com/emabrey/Godot-Secure/releases/download/v1.3.0-alpha/godot_secure.py" \
+            "https://github.com/emabrey/Godot-Secure/releases/download/v1.4.0/godot_secure.py" \
             -o godot_secure.py
       - name: Generate security token
         id: gen
@@ -242,7 +242,7 @@ jobs:
 - uses: emabrey/GodotSecureAction@v1
   with:
     godot-version:    '4.6-stable'
-    godot-secure-tag: 'v1.3.0-alpha'
+    godot-secure-tag: 'v1.4.0'
     algorithm:        camellia
     encryption-key:   ${{ secrets.GODOT_ENCRYPTION_KEY }}
 ```
@@ -286,7 +286,7 @@ jobs:
       - name: Download Godot Secure script
         run: |
           curl -fL --retry 5 --retry-delay 10 \
-            "https://github.com/emabrey/Godot-Secure/releases/download/v1.3.0-alpha/godot_secure.py" \
+            "https://github.com/emabrey/Godot-Secure/releases/download/v1.4.0/godot_secure.py" \
             -o godot_secure.py
       - name: Generate security token
         id: gen

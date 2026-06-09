@@ -41,7 +41,7 @@ env:
   GODOT_VERSION:      ${{ github.event.inputs.godot-version || '4.6-stable' }}
   GODOT_REPO:         'godotengine/godot'
   GODOT_SECURE_REPO:  'emabrey/Godot-Secure'
-  GODOT_SECURE_TAG:   'v1.3.0-alpha'
+  GODOT_SECURE_TAG:   'v1.4.0'
 
 permissions:
   contents: read
