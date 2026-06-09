@@ -43,6 +43,9 @@ env:
   GODOT_SECURE_REPO:  'emabrey/Godot-Secure'
   GODOT_SECURE_TAG:   'v1.3.0-alpha'
 
+permissions:
+  contents: read
+
 jobs:
 
   # ── Setup: generate shared security parameters ────────────────────────────────

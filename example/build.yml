@@ -41,6 +41,9 @@ on:
 env:
   GODOT_VERSION: ${{ github.event.inputs.godot-version || '4.6-stable' }}
 
+permissions:
+  contents: read
+
 jobs:
 
   # ── Setup: generate shared security parameters ────────────────────────────────
