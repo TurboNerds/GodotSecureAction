@@ -73,7 +73,7 @@ jobs:
           security-token: ${{ needs.setup.outputs.security-token }}
 
       - name: Upload binaries
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: godot-secure-${{ steps.godot-secure.outputs.algorithm }}-${{ runner.os }}
           path: godot-source/bin/godot.*
@@ -213,7 +213,7 @@ jobs:
           security-token: ${{ needs.setup.outputs.security-token }}
           lto:            full          # maximum optimisation for a release build
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: godot-secure-${{ steps.godot-secure.outputs.algorithm }}-${{ runner.os }}
           path: godot-source/bin/godot.*
@@ -309,7 +309,7 @@ jobs:
           encryption-key: ${{ secrets.GODOT_ENCRYPTION_KEY }}
           security-token: ${{ needs.setup.outputs.security-token }}
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: godot-secure-${{ steps.godot-secure.outputs.algorithm }}-${{ runner.os }}
           path: godot-source/bin/godot.*

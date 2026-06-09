@@ -100,14 +100,14 @@ jobs:
 
       - name: Upload Godot Secure log
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: log-${{ matrix.cipher }}-${{ runner.os }}
           path: godot_secure_*.log
           if-no-files-found: warn
 
       - name: Upload binaries
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: godot-secure-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-${{ runner.os }}
           path: godot-source/bin/godot.*
@@ -127,7 +127,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: Download AES Linux bundle
         uses: actions/download-artifact@v7
@@ -317,7 +317,7 @@ jobs:
         run: find release/ -type f | sort
 
       - name: Upload release zip
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: godot-${{ env.GODOT_VERSION }}-${{ matrix.cipher }}-release
           path: release/
