@@ -460,14 +460,19 @@ runs:
         echo "lto-arg=lto=${LTO_VAL}" >> "$GITHUB_OUTPUT"
 
         # ── Cache path arg ────────────────────────────────────────────────────────
-        # Use an absolute path so SCons writes to the same directory that
-        # actions/cache watches, regardless of which working-directory the
-        # build step uses. Without this, a relative path like '.scons-cache'
-        # resolves to godot-source/.scons-cache during the build but to
-        # GITHUB_WORKSPACE/.scons-cache inside the cache action, so the cache
-        # is always saved empty and never actually restores anything.
+        # Use Python to resolve a native-OS absolute path so SCons and
+        # actions/cache always refer to the same directory on every platform.
+        # Bash string concatenation with $GITHUB_WORKSPACE produces mixed
+        # separators on Windows (e.g. D:\a\repo/.scons-cache) because
+        # $GITHUB_WORKSPACE holds a native backslash path on Windows runners.
+        # When passed as a SCons cache_path= argument through Git Bash's MSYS2
+        # layer, mixed separators can cause the cache directory to be resolved
+        # differently by SCons vs. actions/cache.  os.path.abspath() always
+        # returns the native OS format: D:\a\repo\.scons-cache on Windows,
+        # /home/runner/work/repo/.scons-cache on Linux/macOS.
         if [ "${{ inputs.scons-cache }}" = "true" ]; then
-          CACHE_ABS="$GITHUB_WORKSPACE/${{ inputs.scons-cache-path }}"
+          CACHE_ABS=$(python3 -c "import os; print(os.path.abspath('${{ inputs.scons-cache-path }}'))")
+          echo "SCons cache path: ${CACHE_ABS}"
           echo "cache-arg=cache_path=${CACHE_ABS} cache_limit=${{ inputs.scons-cache-limit }}" >> "$GITHUB_OUTPUT"
           echo "cache-abs=${CACHE_ABS}" >> "$GITHUB_OUTPUT"
         else
@@ -596,11 +601,12 @@ runs:
         echo "───────────────────────────────────────────────────────────────"
 
     # ── Save SCons cache ────────────────────────────────────────────────────────
-    # Runs unconditionally after the build so newly compiled objects are always
-    # persisted.  algorithm + run_id makes the key unique per parallel job.
+    # Uses always() so partially-compiled objects are persisted even when the
+    # build fails — the next run can then reuse whatever was already compiled.
+    # algorithm + run_id makes the key unique per parallel job.
 
     - name: Save SCons cache
-      if: inputs.scons-cache == 'true'
+      if: always() && inputs.scons-cache == 'true'
       uses: actions/cache/save@v5
       with:
         path: |
