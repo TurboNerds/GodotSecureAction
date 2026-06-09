@@ -362,3 +362,13 @@ Triggered by a tag push (`v*`) or manually from the Actions tab. Produces one zi
 - Godot 4.x source. Tested against `4.5-stable`, `4.6-stable`, and `master`.
 - A repository secret named `GODOT_ENCRYPTION_KEY` containing a 64-character hex string. The same key must be entered in your Godot project's export encryption settings.
 - All platform binaries in a project distribution must be built with the same `algorithm`.
+
+---
+
+## Support
+
+GodotSecureAction is free and open-source. If you find it useful, consider supporting its development:
+
+<a href="https://ko-fi.com/emabrey" target="_blank">
+  <img height="36" src="https://storage.ko-fi.com/cdn/kofi5.png?v=6" border="0" alt="Buy Me a Coffee at ko-fi.com" />
+</a>
