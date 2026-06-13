@@ -1,7 +1,9 @@
 name: Build Godot Secure
 
-# CI workflow — runs on every push to main to verify that GodotSecureAction
-# works correctly across all cipher and OS combinations.
+# CI workflow — runs on every push to any branch to verify that
+# GodotSecureAction works correctly across all cipher and OS combinations.
+# Building on feature branches (e.g. ci/*) surfaces failures before they
+# reach main.
 #
 # This workflow exercises the action itself. For the production release
 # workflow that produces distributable artifacts, see release.yml.
@@ -9,7 +11,9 @@ name: Build Godot Secure
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    # '**' matches every branch, including namespaced names with a slash
+    # such as ci/cross-platform-integration-tests.
+    branches: ['**']
 
 env:
   GODOT_VERSION:      '4.6-stable'
