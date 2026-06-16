@@ -92,7 +92,7 @@ jobs:
     steps:
       - name: Build Godot Secure
         id: godot-secure
-        uses: emabrey/GodotSecureAction@v1
+        uses: emabrey/GodotSecureAction@v2
         with:
           godot-version:  '4.6-stable'
           algorithm:      aes              # aes · camellia · aria — pick one, use it everywhere
@@ -189,6 +189,7 @@ Architecture defaults: `x86_64` on Linux and Windows, auto-detected on macOS (ar
 
 | Output | Description |
 |--------|-------------|
+| `godot-version-string` | Version string for the Godot export_templates directory, e.g. `4.6.0.stable` or `4.6.4.rc`. Append `.mono` when `module_mono_enabled=yes`. Use this to install templates to the correct path without hardcoding the version. |
 | `godot-source-path` | Absolute path to the Godot source tree used for the build. |
 | `godot-secure-script` | Absolute path to the downloaded `godot_secure.py`. Empty when `godot-secure-repo` was not set. |
 | `editor-path` | Absolute path to the compiled editor binary. Empty if not built. |
@@ -231,7 +232,7 @@ jobs:
     steps:
       - name: Build Godot Secure
         id: godot-secure
-        uses: emabrey/GodotSecureAction@v1
+        uses: emabrey/GodotSecureAction@v2
         with:
           godot-version:  '4.6-stable'
           algorithm:      aes
@@ -250,7 +251,7 @@ jobs:
 ```yaml
 - name: Build Godot Secure
   id: build
-  uses: emabrey/GodotSecureAction@v1
+  uses: emabrey/GodotSecureAction@v2
   with:
     godot-version:  '4.6-stable'
     algorithm:      aes
@@ -265,7 +266,7 @@ jobs:
 ### Pin to a specific Godot Secure release
 
 ```yaml
-- uses: emabrey/GodotSecureAction@v1
+- uses: emabrey/GodotSecureAction@v2
   with:
     godot-version:    '4.6-stable'
     godot-secure-tag: 'v1.4.0'
@@ -276,7 +277,7 @@ jobs:
 ### Use a fork of Godot Secure
 
 ```yaml
-- uses: emabrey/GodotSecureAction@v1
+- uses: emabrey/GodotSecureAction@v2
   with:
     godot-version:     '4.6-stable'
     godot-secure-repo: 'my-org/my-godot-secure-fork'
@@ -285,10 +286,50 @@ jobs:
     encryption-key:    ${{ secrets.GODOT_ENCRYPTION_KEY }}
 ```
 
+### Install export templates and run a headless export (Mono / C# project)
+
+Use `godot-version-string` to locate the correct templates directory without hardcoding the version. For Mono builds, append `.mono` to the output.
+
+```yaml
+- name: Build Godot Secure editor
+  id: godot-secure
+  uses: emabrey/GodotSecureAction@v2
+  with:
+    godot-version:    '4.6-stable'
+    algorithm:        aes
+    encryption-key:   ${{ secrets.GODOT_ENCRYPTION_KEY }}
+    security-token:   ${{ needs.setup.outputs.security-token }}
+    target:           editor
+    extra-scons-args: 'module_mono_enabled=yes'
+
+# ... (generate Mono glue, build assemblies, build templates) ...
+
+- name: Install Linux export templates
+  shell: bash
+  run: |
+    src="${{ steps.godot-secure.outputs.godot-source-path }}"
+    bin="$src/bin"
+    GODOT_VER="${{ steps.godot-secure.outputs.godot-version-string }}.mono"
+    TEMPLATES_DIR="$HOME/.local/share/godot/export_templates/$GODOT_VER"
+    mkdir -p "$TEMPLATES_DIR"
+    cp "$(find "$bin" -maxdepth 1 -name 'godot.*.template_release.*' ! -name '*.o' | head -1)" \
+       "$TEMPLATES_DIR/linux_release.x86_64"
+    cp "$(find "$bin" -maxdepth 1 -name 'godot.*.template_debug.*'   ! -name '*.o' | head -1)" \
+       "$TEMPLATES_DIR/linux_debug.x86_64"
+
+- name: Export project
+  shell: bash
+  run: |
+    "${{ steps.godot-secure.outputs.editor-path }}" --headless \
+      --path "$GITHUB_WORKSPACE/my-project" \
+      --export-release "Linux" \
+      "$GITHUB_WORKSPACE/export/my_game"
+```
+
 ### Pass custom SCons arguments
 
 ```yaml
-- uses: emabrey/GodotSecureAction@v1
+- uses: emabrey/GodotSecureAction@v2
   with:
     godot-version:    '4.6-stable'
     algorithm:        aes

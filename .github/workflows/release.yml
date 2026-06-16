@@ -90,7 +90,7 @@ jobs:
     steps:
       - name: Build Godot Secure (${{ matrix.cipher }})
         id: godot-secure
-        uses: emabrey/GodotSecureAction@v1
+        uses: emabrey/GodotSecureAction@v2
         with:
           godot-version:     ${{ env.GODOT_VERSION }}
           godot-repo:        ${{ env.GODOT_REPO }}
