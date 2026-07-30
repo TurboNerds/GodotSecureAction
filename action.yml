@@ -568,9 +568,9 @@ runs:
         # e.g. "4.6.4.rc.mono" or "4.6.0.stable" (no .mono when built without
         # module_mono_enabled=yes — callers must append it when needed).
         VERSION_STR=$(python3 -c "
-d = {}
-exec(open('$GITHUB_WORKSPACE/${{ inputs.godot-source }}/version.py').read(), d)
-print(f\"{d['major']}.{d['minor']}.{d['patch']}.{d['status']}\")" 2>/dev/null || echo "")
+        d = {}
+        exec(open('$GITHUB_WORKSPACE/${{ inputs.godot-source }}/version.py').read(), d)
+        print(f\"{d['major']}.{d['minor']}.{d['patch']}.{d['status']}\")" 2>/dev/null || echo "")
         echo "godot-version-string=$VERSION_STR" >> "$GITHUB_OUTPUT"
         [ -n "$VERSION_STR" ] && echo "  version string  : $VERSION_STR"
 
